@@ -28,10 +28,9 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 const menuItems = [
   { title: "Conversas", url: "/conversations", icon: MessageSquare },
-  { title: "Disparos", url: "/campaigns", icon: Send },
   { title: "Filas", url: "/queues", icon: Layers },
   { title: "Chips", url: "/chips", icon: Smartphone },
-  { title: "Usuários", url: "/users", icon: Users },
+  { title: "Campanhas", url: "/campaigns", icon: Send },
   { title: "Relatórios", url: "/reports", icon: BarChart3 },
   { title: "Configurações", url: "/settings", icon: Settings },
 ];

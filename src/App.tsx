@@ -7,6 +7,10 @@ import { AuthProvider } from "@/contexts/AuthContext";
 import { AuthGuard } from "@/components/AuthGuard";
 import { Layout } from "@/components/Layout";
 import Conversations from "./pages/Conversations";
+import Queues from "./pages/Queues";
+import Chips from "./pages/Chips";
+import Campaigns from "./pages/Campaigns";
+import Reports from "./pages/Reports";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -26,6 +30,10 @@ const App = () => (
             }>
               <Route index element={<Conversations />} />
               <Route path="conversations" element={<Conversations />} />
+              <Route path="queues" element={<Queues />} />
+              <Route path="chips" element={<Chips />} />
+              <Route path="campaigns" element={<Campaigns />} />
+              <Route path="reports" element={<Reports />} />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             </Route>
             <Route path="*" element={<NotFound />} />
