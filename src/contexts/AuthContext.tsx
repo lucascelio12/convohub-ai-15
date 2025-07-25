@@ -83,14 +83,34 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         .from('profiles')
         .select('*')
         .eq('user_id', userId)
-        .single();
+        .maybeSingle();
 
       if (error) {
         console.error('AuthContext - Error fetching profile:', error);
-        if (error.code === 'PGRST116') {
-          console.log('AuthContext - No profile found, user might need to create one');
-          // No profile found, that's ok
-          setProfile(null);
+      } else if (!data) {
+        console.log('AuthContext - No profile found, creating one');
+        // Create profile if it doesn't exist
+        const { data: userData } = await supabase.auth.getUser();
+        if (userData.user) {
+          const newProfile = {
+            user_id: userId,
+            name: userData.user.user_metadata?.name || userData.user.email?.split('@')[0] || 'Usuário',
+            email: userData.user.email || '',
+            role: 'admin' // Primeiro usuário é admin
+          };
+          
+          const { data: createdProfile, error: createError } = await supabase
+            .from('profiles')
+            .insert(newProfile)
+            .select()
+            .single();
+            
+          if (createError) {
+            console.error('AuthContext - Error creating profile:', createError);
+          } else {
+            console.log('AuthContext - Profile created successfully:', createdProfile);
+            setProfile(createdProfile as Profile);
+          }
         }
       } else {
         console.log('AuthContext - Profile fetched successfully:', data);
