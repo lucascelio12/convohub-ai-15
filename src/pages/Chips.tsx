@@ -6,7 +6,8 @@ import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
-import { Plus, Smartphone, Signal, MoreVertical, AlertTriangle } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Plus, Smartphone, Signal, MoreVertical, AlertTriangle, QrCode, Settings, Wifi } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 
@@ -14,17 +15,30 @@ interface Chip {
   id: string;
   name: string;
   phone_number: string;
-  status: 'active' | 'inactive' | 'blocked';
+  status: 'active' | 'inactive' | 'blocked' | 'connecting' | 'disconnected';
   priority: number;
   daily_limit: number;
   current_usage: number;
   created_at: string;
+  queue_id?: string;
+}
+
+interface Queue {
+  id: string;
+  name: string;
+  color: string;
 }
 
 export default function Chips() {
   const [chips, setChips] = useState<Chip[]>([]);
+  const [queues, setQueues] = useState<Queue[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [qrDialogOpen, setQrDialogOpen] = useState(false);
+  const [configDialogOpen, setConfigDialogOpen] = useState(false);
+  const [selectedChip, setSelectedChip] = useState<Chip | null>(null);
+  const [qrCode, setQrCode] = useState<string>('');
+  const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'failed' | 'idle'>('idle');
   const [newChip, setNewChip] = useState({
     name: '',
     phone_number: '',
@@ -35,7 +49,22 @@ export default function Chips() {
 
   useEffect(() => {
     fetchChips();
+    fetchQueues();
   }, []);
+
+  const fetchQueues = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('queues')
+        .select('id, name, color')
+        .order('name');
+
+      if (error) throw error;
+      setQueues((data as Queue[]) || []);
+    } catch (error: any) {
+      console.error('Error fetching queues:', error);
+    }
+  };
 
   const fetchChips = async () => {
     try {
@@ -89,9 +118,64 @@ export default function Chips() {
     }
   };
 
+  const startConnection = async (chip: Chip) => {
+    setSelectedChip(chip);
+    setConnectionStatus('connecting');
+    setQrDialogOpen(true);
+    
+    // Simular geração de QR code - aqui você integraria com sua API de WhatsApp
+    setTimeout(() => {
+      setQrCode(`data:image/svg+xml;base64,${btoa(`
+        <svg width="200" height="200" xmlns="http://www.w3.org/2000/svg">
+          <rect width="200" height="200" fill="white"/>
+          <text x="100" y="100" font-family="Arial" font-size="12" text-anchor="middle" fill="black">
+            QR Code para ${chip.name}
+          </text>
+          <text x="100" y="120" font-family="Arial" font-size="10" text-anchor="middle" fill="gray">
+            ${chip.phone_number}
+          </text>
+        </svg>
+      `)}`);
+    }, 1000);
+  };
+
+  const openConfigDialog = (chip: Chip) => {
+    setSelectedChip(chip);
+    setConfigDialogOpen(true);
+  };
+
+  const updateChipQueue = async (queueId: string) => {
+    if (!selectedChip) return;
+
+    try {
+      const { error } = await supabase
+        .from('chips')
+        .update({ queue_id: queueId })
+        .eq('id', selectedChip.id);
+
+      if (error) throw error;
+      
+      setConfigDialogOpen(false);
+      fetchChips();
+      
+      toast({
+        title: 'Sucesso',
+        description: 'Fila configurada com sucesso!',
+      });
+    } catch (error: any) {
+      toast({
+        title: 'Erro',
+        description: 'Erro ao configurar fila: ' + error.message,
+        variant: 'destructive',
+      });
+    }
+  };
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'active': return 'bg-green-100 text-green-800 border-green-200';
+      case 'connecting': return 'bg-yellow-100 text-yellow-800 border-yellow-200';
+      case 'disconnected': return 'bg-orange-100 text-orange-800 border-orange-200';
       case 'inactive': return 'bg-gray-100 text-gray-800 border-gray-200';
       case 'blocked': return 'bg-red-100 text-red-800 border-red-200';
       default: return 'bg-gray-100 text-gray-800 border-gray-200';
@@ -101,6 +185,8 @@ export default function Chips() {
   const getStatusLabel = (status: string) => {
     switch (status) {
       case 'active': return 'Ativo';
+      case 'connecting': return 'Conectando';
+      case 'disconnected': return 'Desconectado';
       case 'inactive': return 'Inativo';
       case 'blocked': return 'Bloqueado';
       default: return status;
