@@ -57,13 +57,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Listen for auth changes
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (event, session) => {
+    } = supabase.auth.onAuthStateChange((event, session) => {
       console.log('AuthContext - Auth state change:', event, session);
       setSession(session);
       setUser(session?.user ?? null);
       
       if (session?.user) {
-        await fetchProfile(session.user.id);
+        // Use setTimeout to avoid blocking the auth state change
+        setTimeout(() => {
+          fetchProfile(session.user.id);
+        }, 0);
       } else {
         setProfile(null);
         setLoading(false);
@@ -75,6 +78,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const fetchProfile = async (userId: string) => {
     try {
+      console.log('AuthContext - Fetching profile for user:', userId);
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
@@ -82,13 +86,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         .single();
 
       if (error) {
-        console.error('Error fetching profile:', error);
+        console.error('AuthContext - Error fetching profile:', error);
+        if (error.code === 'PGRST116') {
+          console.log('AuthContext - No profile found, user might need to create one');
+          // No profile found, that's ok
+          setProfile(null);
+        }
       } else {
+        console.log('AuthContext - Profile fetched successfully:', data);
         setProfile(data as Profile);
       }
     } catch (error) {
-      console.error('Error fetching profile:', error);
+      console.error('AuthContext - Error fetching profile:', error);
     } finally {
+      console.log('AuthContext - Setting loading to false');
       setLoading(false);
     }
   };
