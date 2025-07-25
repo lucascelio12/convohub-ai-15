@@ -71,6 +71,7 @@ export type Database = {
           name: string
           phone_number: string
           priority: number | null
+          queue_id: string | null
           status: string
           updated_at: string
         }
@@ -83,6 +84,7 @@ export type Database = {
           name: string
           phone_number: string
           priority?: number | null
+          queue_id?: string | null
           status?: string
           updated_at?: string
         }
@@ -95,6 +97,7 @@ export type Database = {
           name?: string
           phone_number?: string
           priority?: number | null
+          queue_id?: string | null
           status?: string
           updated_at?: string
         }
@@ -104,6 +107,13 @@ export type Database = {
             columns: ["created_by"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chips_queue_id_fkey"
+            columns: ["queue_id"]
+            isOneToOne: false
+            referencedRelation: "queues"
             referencedColumns: ["id"]
           },
         ]

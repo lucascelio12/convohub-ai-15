@@ -289,73 +289,185 @@ export default function Chips() {
         </Card>
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {chips.map((chip) => (
-            <Card key={chip.id} className="hover:shadow-md transition-shadow">
-              <CardHeader className="pb-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <Smartphone className="h-5 w-5 text-primary" />
-                    <CardTitle className="text-lg">{chip.name}</CardTitle>
+          {chips.map((chip) => {
+            const assignedQueue = queues.find(q => q.id === chip.queue_id);
+            return (
+              <Card key={chip.id} className="hover:shadow-md transition-shadow">
+                <CardHeader className="pb-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <Smartphone className="h-5 w-5 text-primary" />
+                      <CardTitle className="text-lg">{chip.name}</CardTitle>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge className={getStatusColor(chip.status)}>
+                        {getStatusLabel(chip.status)}
+                      </Badge>
+                      <Button variant="ghost" size="sm">
+                        <MoreVertical className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <Badge className={getStatusColor(chip.status)}>
-                      {getStatusLabel(chip.status)}
-                    </Badge>
-                    <Button variant="ghost" size="sm">
-                      <MoreVertical className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-                <p className="text-sm text-muted-foreground">{chip.phone_number}</p>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {/* Usage Progress */}
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-medium">Uso Diário</span>
+                  <p className="text-sm text-muted-foreground">{chip.phone_number}</p>
+                  {assignedQueue && (
+                    <div className="flex items-center gap-2 mt-2">
+                      <div 
+                        className="w-3 h-3 rounded-full" 
+                        style={{ backgroundColor: assignedQueue.color }}
+                      />
                       <span className="text-sm text-muted-foreground">
-                        {chip.current_usage} / {chip.daily_limit}
+                        Fila: {assignedQueue.name}
                       </span>
                     </div>
-                    <Progress 
-                      value={(chip.current_usage / chip.daily_limit) * 100} 
-                      className="h-2"
-                    />
-                    {chip.current_usage / chip.daily_limit > 0.8 && (
-                      <div className="flex items-center gap-1 mt-1">
-                        <AlertTriangle className="h-3 w-3 text-yellow-500" />
-                        <span className="text-xs text-yellow-600">Próximo do limite</span>
+                  )}
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    {/* Usage Progress */}
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm font-medium">Uso Diário</span>
+                        <span className="text-sm text-muted-foreground">
+                          {chip.current_usage} / {chip.daily_limit}
+                        </span>
                       </div>
-                    )}
-                  </div>
-
-                  {/* Stats */}
-                  <div className="grid grid-cols-2 gap-4 pt-3 border-t">
-                    <div className="text-center">
-                      <p className="text-sm font-medium">{chip.priority}</p>
-                      <p className="text-xs text-muted-foreground">Prioridade</p>
+                      <Progress 
+                        value={(chip.current_usage / chip.daily_limit) * 100} 
+                        className="h-2"
+                      />
+                      {chip.current_usage / chip.daily_limit > 0.8 && (
+                        <div className="flex items-center gap-1 mt-1">
+                          <AlertTriangle className="h-3 w-3 text-yellow-500" />
+                          <span className="text-xs text-yellow-600">Próximo do limite</span>
+                        </div>
+                      )}
                     </div>
-                    <div className="text-center">
-                      <div className="flex items-center justify-center gap-1">
-                        <Signal className="h-3 w-3 text-green-500" />
-                        <p className="text-sm font-medium">Online</p>
+
+                    {/* Stats */}
+                    <div className="grid grid-cols-2 gap-4 pt-3 border-t">
+                      <div className="text-center">
+                        <p className="text-sm font-medium">{chip.priority}</p>
+                        <p className="text-xs text-muted-foreground">Prioridade</p>
                       </div>
-                      <p className="text-xs text-muted-foreground">Status</p>
+                      <div className="text-center">
+                        <div className="flex items-center justify-center gap-1">
+                          <Signal className="h-3 w-3 text-green-500" />
+                          <p className="text-sm font-medium">Online</p>
+                        </div>
+                        <p className="text-xs text-muted-foreground">Status</p>
+                      </div>
+                    </div>
+
+                    {/* Action Buttons */}
+                    <div className="flex gap-2 pt-2">
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        className="flex-1"
+                        onClick={() => startConnection(chip)}
+                      >
+                        <QrCode className="h-4 w-4 mr-2" />
+                        QR Code
+                      </Button>
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        className="flex-1"
+                        onClick={() => openConfigDialog(chip)}
+                      >
+                        <Settings className="h-4 w-4 mr-2" />
+                        Config
+                      </Button>
+                    </div>
+
+                    <div className="pt-1">
+                      <p className="text-xs text-muted-foreground">
+                        Adicionado em {new Date(chip.created_at).toLocaleDateString('pt-BR')}
+                      </p>
                     </div>
                   </div>
-
-                  <div className="pt-2">
-                    <p className="text-xs text-muted-foreground">
-                      Adicionado em {new Date(chip.created_at).toLocaleDateString('pt-BR')}
-                    </p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
       )}
+
+      {/* QR Code Dialog */}
+      <Dialog open={qrDialogOpen} onOpenChange={setQrDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <QrCode className="h-5 w-5" />
+              Conectar WhatsApp - {selectedChip?.name}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            {connectionStatus === 'connecting' && !qrCode && (
+              <div className="flex flex-col items-center py-8">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mb-4"></div>
+                <p className="text-sm text-muted-foreground">Gerando QR Code...</p>
+              </div>
+            )}
+            
+            {qrCode && (
+              <div className="flex flex-col items-center space-y-4">
+                <div className="bg-white p-4 rounded-lg border">
+                  <img src={qrCode} alt="QR Code" className="w-48 h-48" />
+                </div>
+                <div className="text-center space-y-2">
+                  <p className="text-sm font-medium">1. Abra o WhatsApp no seu celular</p>
+                  <p className="text-sm text-muted-foreground">2. Toque em Menu ou Configurações</p>
+                  <p className="text-sm text-muted-foreground">3. Toque em WhatsApp Web</p>
+                  <p className="text-sm text-muted-foreground">4. Aponte seu celular para esta tela para capturar o código</p>
+                </div>
+                <div className="flex items-center gap-2 text-orange-600">
+                  <Wifi className="h-4 w-4" />
+                  <span className="text-sm">Aguardando conexão...</span>
+                </div>
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Configuration Dialog */}
+      <Dialog open={configDialogOpen} onOpenChange={setConfigDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Settings className="h-5 w-5" />
+              Configurar - {selectedChip?.name}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="queue">Fila de Atendimento</Label>
+              <Select onValueChange={updateChipQueue}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione uma fila" />
+                </SelectTrigger>
+                <SelectContent>
+                  {queues.map((queue) => (
+                    <SelectItem key={queue.id} value={queue.id}>
+                      <div className="flex items-center gap-2">
+                        <div 
+                          className="w-3 h-3 rounded-full" 
+                          style={{ backgroundColor: queue.color }}
+                        />
+                        {queue.name}
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-sm text-muted-foreground mt-1">
+                Mensagens recebidas neste chip serão direcionadas para a fila selecionada
+              </p>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
