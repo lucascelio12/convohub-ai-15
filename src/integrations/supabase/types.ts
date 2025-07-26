@@ -346,6 +346,10 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: string
       }
+      increment_chip_usage: {
+        Args: { chip_id: string }
+        Returns: undefined
+      }
     }
     Enums: {
       [_ in never]: never

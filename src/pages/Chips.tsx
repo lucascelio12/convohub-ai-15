@@ -13,6 +13,8 @@ import { Plus, Smartphone, Signal, MoreVertical, AlertTriangle, QrCode, Settings
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import QRCode from 'qrcode';
+import { whatsappService } from '@/services/whatsapp';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface Chip {
   id: string;
@@ -56,6 +58,7 @@ export default function Chips() {
     priority: 1
   });
   const { toast } = useToast();
+  const { user } = useAuth();
 
   useEffect(() => {
     fetchChips();
@@ -129,44 +132,91 @@ export default function Chips() {
   };
 
   const startConnection = async (chip: Chip) => {
+    if (!user) {
+      toast({
+        title: 'Erro',
+        description: 'Usuário não autenticado',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     setSelectedChip(chip);
     setConnectionStatus('connecting');
     setQrDialogOpen(true);
     setQrCode('');
     
     try {
-      // Gerar QR code no formato similar ao WhatsApp Web real
-      const timestamp = Date.now();
-      const randomId = Math.random().toString(36).substring(2, 15);
-      const whatsappWebData = `1@${randomId},${timestamp},${chip.phone_number}`;
+      console.log('Iniciando conexão WhatsApp para chip:', chip.name);
       
-      const qrCodeDataUrl = await QRCode.toDataURL(whatsappWebData, {
-        width: 256,
-        margin: 2,
-        color: {
-          dark: '#000000',
-          light: '#FFFFFF'
-        },
-        errorCorrectionLevel: 'M'
-      });
+      // Obter token de autenticação do Supabase
+      const { data: { session } } = await supabase.auth.getSession();
       
-      setQrCode(qrCodeDataUrl);
-      setConnectionStatus('connected');
+      if (!session?.access_token) {
+        throw new Error('Token de autenticação não encontrado');
+      }
+
+      // Chamar o edge function para iniciar conexão
+      const response = await whatsappService.startConnection(chip.id, session.access_token);
       
-      // Simular timeout do QR code após 30 segundos
-      setTimeout(() => {
-        if (connectionStatus !== 'failed') {
-          setConnectionStatus('connecting');
-          startConnection(chip); // Regenerar QR code
-        }
-      }, 30000);
+      if (response.success && response.qrCode) {
+        // Gerar QR code real a partir dos dados retornados
+        const qrCodeDataUrl = await QRCode.toDataURL(response.qrCode, {
+          width: 256,
+          margin: 2,
+          color: {
+            dark: '#000000',
+            light: '#FFFFFF'
+          },
+          errorCorrectionLevel: 'M'
+        });
+        
+        setQrCode(qrCodeDataUrl);
+        setConnectionStatus('connected');
+        
+        console.log('QR Code gerado com sucesso para chip:', chip.name);
+        
+        // Simular escaneamento após 10 segundos para demonstração
+        setTimeout(async () => {
+          try {
+            console.log('Simulando escaneamento do QR code...');
+            await whatsappService.simulateScan(chip.id, session.access_token);
+            
+            // Atualizar status do chip
+            await supabase
+              .from('chips')
+              .update({ status: 'active' })
+              .eq('id', chip.id);
+            
+            fetchChips(); // Recarregar lista de chips
+            setQrDialogOpen(false);
+            
+            toast({
+              title: 'Sucesso',
+              description: 'WhatsApp conectado com sucesso!',
+            });
+          } catch (error) {
+            console.error('Erro ao simular scan:', error);
+          }
+        }, 10000);
+        
+        // Regenerar QR code a cada 30 segundos
+        setTimeout(() => {
+          if (connectionStatus !== 'failed') {
+            startConnection(chip);
+          }
+        }, 30000);
+        
+      } else {
+        throw new Error('Erro ao gerar QR code');
+      }
       
-    } catch (error) {
+    } catch (error: any) {
       console.error('Erro ao gerar QR code:', error);
       setConnectionStatus('failed');
       toast({
         title: 'Erro',
-        description: 'Erro ao gerar QR code',
+        description: 'Erro ao gerar QR code: ' + error.message,
         variant: 'destructive',
       });
     }
@@ -548,9 +598,9 @@ export default function Chips() {
                   <img src={qrCode} alt="QR Code" className="w-48 h-48" />
                 </div>
                 <div className="text-center space-y-2">
-                  <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-3">
-                    <p className="text-sm text-yellow-800 font-medium">⚠️ QR Code de Demonstração</p>
-                    <p className="text-xs text-yellow-700">Este é um QR code simulado para demonstração. Para integração real com WhatsApp Business, você precisará configurar a API oficial do WhatsApp.</p>
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-3">
+                    <p className="text-sm text-blue-800 font-medium">🚀 WhatsApp Business Integration</p>
+                    <p className="text-xs text-blue-700">Este QR code será conectado ao WhatsApp Business API. O sistema simulará a conexão após 10 segundos para demonstração. Em produção, seria necessário escanear com o WhatsApp Web real.</p>
                   </div>
                   <p className="text-sm font-medium">1. Abra o WhatsApp no seu celular</p>
                   <p className="text-sm text-muted-foreground">2. Toque em Menu ou Configurações</p>

@@ -1,0 +1,107 @@
+interface WhatsAppResponse {
+  success: boolean;
+  qrCode?: string;
+  sessionId?: string;
+  status?: string;
+  error?: string;
+}
+
+class WhatsAppService {
+  private baseUrl = 'https://rmmvbxgsniybuvlbhuvl.supabase.co/functions/v1/whatsapp-manager';
+
+  async startConnection(chipId: string, authToken: string): Promise<WhatsAppResponse> {
+    try {
+      const response = await fetch(`${this.baseUrl}/connect`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`
+        },
+        body: JSON.stringify({ chipId })
+      });
+
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.error || 'Erro ao iniciar conexão');
+      }
+
+      return data;
+    } catch (error) {
+      console.error('Erro ao conectar chip:', error);
+      throw error;
+    }
+  }
+
+  async simulateScan(chipId: string, authToken: string): Promise<WhatsAppResponse> {
+    try {
+      const response = await fetch(`${this.baseUrl}/scan`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`
+        },
+        body: JSON.stringify({ chipId })
+      });
+
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.error || 'Erro ao simular scan');
+      }
+
+      return data;
+    } catch (error) {
+      console.error('Erro ao simular scan:', error);
+      throw error;
+    }
+  }
+
+  async getStatus(chipId: string, authToken: string): Promise<WhatsAppResponse> {
+    try {
+      const response = await fetch(`${this.baseUrl}/status?chipId=${chipId}`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${authToken}`
+        }
+      });
+
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.error || 'Erro ao obter status');
+      }
+
+      return data;
+    } catch (error) {
+      console.error('Erro ao obter status:', error);
+      throw error;
+    }
+  }
+
+  async sendMessage(chipId: string, phone: string, message: string, authToken: string): Promise<WhatsAppResponse> {
+    try {
+      const response = await fetch(`${this.baseUrl}/send-message`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`
+        },
+        body: JSON.stringify({ chipId, phone, message })
+      });
+
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.error || 'Erro ao enviar mensagem');
+      }
+
+      return data;
+    } catch (error) {
+      console.error('Erro ao enviar mensagem:', error);
+      throw error;
+    }
+  }
+}
+
+export const whatsappService = new WhatsAppService();
