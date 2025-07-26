@@ -135,19 +135,32 @@ export default function Chips() {
     setQrCode('');
     
     try {
-      // Gerar QR code real para WhatsApp Web
-      const whatsappData = `whatsapp://web/${chip.phone_number}_${Date.now()}`;
-      const qrCodeDataUrl = await QRCode.toDataURL(whatsappData, {
+      // Gerar QR code no formato similar ao WhatsApp Web real
+      const timestamp = Date.now();
+      const randomId = Math.random().toString(36).substring(2, 15);
+      const whatsappWebData = `1@${randomId},${timestamp},${chip.phone_number}`;
+      
+      const qrCodeDataUrl = await QRCode.toDataURL(whatsappWebData, {
         width: 256,
         margin: 2,
         color: {
           dark: '#000000',
           light: '#FFFFFF'
-        }
+        },
+        errorCorrectionLevel: 'M'
       });
       
       setQrCode(qrCodeDataUrl);
       setConnectionStatus('connected');
+      
+      // Simular timeout do QR code após 30 segundos
+      setTimeout(() => {
+        if (connectionStatus !== 'failed') {
+          setConnectionStatus('connecting');
+          startConnection(chip); // Regenerar QR code
+        }
+      }, 30000);
+      
     } catch (error) {
       console.error('Erro ao gerar QR code:', error);
       setConnectionStatus('failed');
@@ -535,6 +548,10 @@ export default function Chips() {
                   <img src={qrCode} alt="QR Code" className="w-48 h-48" />
                 </div>
                 <div className="text-center space-y-2">
+                  <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-3">
+                    <p className="text-sm text-yellow-800 font-medium">⚠️ QR Code de Demonstração</p>
+                    <p className="text-xs text-yellow-700">Este é um QR code simulado para demonstração. Para integração real com WhatsApp Business, você precisará configurar a API oficial do WhatsApp.</p>
+                  </div>
                   <p className="text-sm font-medium">1. Abra o WhatsApp no seu celular</p>
                   <p className="text-sm text-muted-foreground">2. Toque em Menu ou Configurações</p>
                   <p className="text-sm text-muted-foreground">3. Toque em WhatsApp Web</p>
