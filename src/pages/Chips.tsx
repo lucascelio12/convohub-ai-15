@@ -7,9 +7,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Plus, Smartphone, Signal, MoreVertical, AlertTriangle, QrCode, Settings, Wifi } from 'lucide-react';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
+import { Plus, Smartphone, Signal, MoreVertical, AlertTriangle, QrCode, Settings, Wifi, Edit, Trash2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import QRCode from 'qrcode';
 
 interface Chip {
   id: string;
@@ -39,7 +42,14 @@ export default function Chips() {
   const [selectedChip, setSelectedChip] = useState<Chip | null>(null);
   const [qrCode, setQrCode] = useState<string>('');
   const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'failed' | 'idle'>('idle');
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [newChip, setNewChip] = useState({
+    name: '',
+    phone_number: '',
+    daily_limit: 100,
+    priority: 1
+  });
+  const [editChip, setEditChip] = useState({
     name: '',
     phone_number: '',
     daily_limit: 100,
@@ -122,21 +132,98 @@ export default function Chips() {
     setSelectedChip(chip);
     setConnectionStatus('connecting');
     setQrDialogOpen(true);
+    setQrCode('');
     
-    // Simular geração de QR code - aqui você integraria com sua API de WhatsApp
-    setTimeout(() => {
-      setQrCode(`data:image/svg+xml;base64,${btoa(`
-        <svg width="200" height="200" xmlns="http://www.w3.org/2000/svg">
-          <rect width="200" height="200" fill="white"/>
-          <text x="100" y="100" font-family="Arial" font-size="12" text-anchor="middle" fill="black">
-            QR Code para ${chip.name}
-          </text>
-          <text x="100" y="120" font-family="Arial" font-size="10" text-anchor="middle" fill="gray">
-            ${chip.phone_number}
-          </text>
-        </svg>
-      `)}`);
-    }, 1000);
+    try {
+      // Gerar QR code real para WhatsApp Web
+      const whatsappData = `whatsapp://web/${chip.phone_number}_${Date.now()}`;
+      const qrCodeDataUrl = await QRCode.toDataURL(whatsappData, {
+        width: 256,
+        margin: 2,
+        color: {
+          dark: '#000000',
+          light: '#FFFFFF'
+        }
+      });
+      
+      setQrCode(qrCodeDataUrl);
+      setConnectionStatus('connected');
+    } catch (error) {
+      console.error('Erro ao gerar QR code:', error);
+      setConnectionStatus('failed');
+      toast({
+        title: 'Erro',
+        description: 'Erro ao gerar QR code',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const openEditDialog = (chip: Chip) => {
+    setSelectedChip(chip);
+    setEditChip({
+      name: chip.name,
+      phone_number: chip.phone_number,
+      daily_limit: chip.daily_limit,
+      priority: chip.priority
+    });
+    setEditDialogOpen(true);
+  };
+
+  const updateChip = async () => {
+    if (!selectedChip || !editChip.name.trim() || !editChip.phone_number.trim()) return;
+
+    try {
+      const { error } = await supabase
+        .from('chips')
+        .update({
+          name: editChip.name,
+          phone_number: editChip.phone_number,
+          daily_limit: editChip.daily_limit,
+          priority: editChip.priority
+        })
+        .eq('id', selectedChip.id);
+
+      if (error) throw error;
+      
+      setEditDialogOpen(false);
+      fetchChips();
+      
+      toast({
+        title: 'Sucesso',
+        description: 'Chip atualizado com sucesso!',
+      });
+    } catch (error: any) {
+      toast({
+        title: 'Erro',
+        description: 'Erro ao atualizar chip: ' + error.message,
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const deleteChip = async (chipId: string) => {
+    try {
+      const { error } = await supabase
+        .from('chips')
+        .delete()
+        .eq('id', chipId);
+
+      if (error) throw error;
+      
+      fetchChips();
+      
+      toast({
+        title: 'Sucesso',
+        description: 'Chip excluído com sucesso!',
+      });
+    } catch (error: any) {
+      toast({
+        title: 'Erro',
+        description: 'Erro ao excluir chip: ' + error.message,
+        variant: 'destructive',
+      });
+    }
   };
 
   const openConfigDialog = (chip: Chip) => {
@@ -303,9 +390,41 @@ export default function Chips() {
                       <Badge className={getStatusColor(chip.status)}>
                         {getStatusLabel(chip.status)}
                       </Badge>
-                      <Button variant="ghost" size="sm">
-                        <MoreVertical className="h-4 w-4" />
-                      </Button>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="sm">
+                            <MoreVertical className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => openEditDialog(chip)}>
+                            <Edit className="h-4 w-4 mr-2" />
+                            Editar
+                          </DropdownMenuItem>
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
+                                <Trash2 className="h-4 w-4 mr-2" />
+                                Excluir
+                              </DropdownMenuItem>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>Tem certeza?</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  Esta ação não pode ser desfeita. Isso excluirá permanentemente o chip "{chip.name}".
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                                <AlertDialogAction onClick={() => deleteChip(chip.id)}>
+                                  Excluir
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </div>
                   </div>
                   <p className="text-sm text-muted-foreground">{chip.phone_number}</p>
@@ -464,6 +583,67 @@ export default function Chips() {
               <p className="text-sm text-muted-foreground mt-1">
                 Mensagens recebidas neste chip serão direcionadas para a fila selecionada
               </p>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Chip Dialog */}
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Edit className="h-5 w-5" />
+              Editar Chip - {selectedChip?.name}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="edit-name">Nome do Chip</Label>
+              <Input
+                id="edit-name"
+                value={editChip.name}
+                onChange={(e) => setEditChip({ ...editChip, name: e.target.value })}
+                placeholder="Ex: Chip Principal, Chip Vendas..."
+              />
+            </div>
+            <div>
+              <Label htmlFor="edit-phone">Número do WhatsApp</Label>
+              <Input
+                id="edit-phone"
+                value={editChip.phone_number}
+                onChange={(e) => setEditChip({ ...editChip, phone_number: e.target.value })}
+                placeholder="Ex: +5511999999999"
+              />
+            </div>
+            <div>
+              <Label htmlFor="edit-limit">Limite Diário de Mensagens</Label>
+              <Input
+                id="edit-limit"
+                type="number"
+                value={editChip.daily_limit}
+                onChange={(e) => setEditChip({ ...editChip, daily_limit: parseInt(e.target.value) || 100 })}
+                min="1"
+              />
+            </div>
+            <div>
+              <Label htmlFor="edit-priority">Prioridade</Label>
+              <Input
+                id="edit-priority"
+                type="number"
+                value={editChip.priority}
+                onChange={(e) => setEditChip({ ...editChip, priority: parseInt(e.target.value) || 1 })}
+                min="1"
+                max="10"
+              />
+            </div>
+            <div className="flex gap-2 justify-end">
+              <Button variant="outline" onClick={() => setEditDialogOpen(false)}>
+                Cancelar
+              </Button>
+              <Button onClick={updateChip}>
+                Salvar Alterações
+              </Button>
             </div>
           </div>
         </DialogContent>
