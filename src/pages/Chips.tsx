@@ -12,7 +12,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Plus, Smartphone, Signal, MoreVertical, AlertTriangle, QrCode, Settings, Wifi, Edit, Trash2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import QRCode from 'qrcode';
+import { QRCodeSVG } from 'qrcode.react';
 import { whatsappService } from '@/services/whatsapp';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -160,52 +160,36 @@ export default function Chips() {
       const response = await whatsappService.startConnection(chip.id, session.access_token);
       
       if (response.success && response.qrCode) {
-        // Gerar QR code real a partir dos dados retornados
-        const qrCodeDataUrl = await QRCode.toDataURL(response.qrCode, {
-          width: 256,
-          margin: 2,
-          color: {
-            dark: '#000000',
-            light: '#FFFFFF'
-          },
-          errorCorrectionLevel: 'M'
-        });
-        
-        setQrCode(qrCodeDataUrl);
+        setQrCode(response.qrCode);
         setConnectionStatus('connected');
         
-        console.log('QR Code gerado com sucesso para chip:', chip.name);
+        console.log('QR Code real do WhatsApp gerado para chip:', chip.name);
         
-        // Simular escaneamento após 10 segundos para demonstração
-        setTimeout(async () => {
+        // Verificar status da conexão periodicamente
+        const checkConnection = async () => {
           try {
-            console.log('Simulando escaneamento do QR code...');
-            await whatsappService.simulateScan(chip.id, session.access_token);
+            const statusResponse = await whatsappService.getStatus(chip.id, session.access_token);
             
-            // Atualizar status do chip
-            await supabase
-              .from('chips')
-              .update({ status: 'active' })
-              .eq('id', chip.id);
-            
-            fetchChips(); // Recarregar lista de chips
-            setQrDialogOpen(false);
-            
-            toast({
-              title: 'Sucesso',
-              description: 'WhatsApp conectado com sucesso!',
-            });
+            if (statusResponse.status === 'connected') {
+              // Conexão estabelecida!
+              fetchChips();
+              setQrDialogOpen(false);
+              
+              toast({
+                title: 'Sucesso',
+                description: 'WhatsApp conectado com sucesso!',
+              });
+            } else if (statusResponse.status === 'connecting') {
+              // Ainda conectando, verificar novamente em 3 segundos
+              setTimeout(checkConnection, 3000);
+            }
           } catch (error) {
-            console.error('Erro ao simular scan:', error);
+            console.error('Erro ao verificar status da conexão:', error);
           }
-        }, 10000);
+        };
         
-        // Regenerar QR code a cada 30 segundos
-        setTimeout(() => {
-          if (connectionStatus !== 'failed') {
-            startConnection(chip);
-          }
-        }, 30000);
+        // Iniciar verificação de status
+        setTimeout(checkConnection, 3000);
         
       } else {
         throw new Error('Erro ao gerar QR code');
@@ -593,21 +577,20 @@ export default function Chips() {
             )}
             
             {qrCode && (
-              <div className="flex flex-col items-center space-y-4">
-                <div className="bg-white p-4 rounded-lg border">
-                  <img src={qrCode} alt="QR Code" className="w-48 h-48" />
+              <div className="text-center space-y-4">
+                <p className="text-sm text-muted-foreground">
+                  📱 Escaneie este QR Code com seu WhatsApp
+                </p>
+                <div className="flex justify-center">
+                  <QRCodeSVG value={qrCode} size={256} />
                 </div>
-                <div className="text-center space-y-2">
-                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-3">
-                    <p className="text-sm text-blue-800 font-medium">🚀 WhatsApp Business Integration</p>
-                    <p className="text-xs text-blue-700">Este QR code será conectado ao WhatsApp Business API. O sistema simulará a conexão após 10 segundos para demonstração. Em produção, seria necessário escanear com o WhatsApp Web real.</p>
-                  </div>
-                  <p className="text-sm font-medium">1. Abra o WhatsApp no seu celular</p>
-                  <p className="text-sm text-muted-foreground">2. Toque em Menu ou Configurações</p>
-                  <p className="text-sm text-muted-foreground">3. Toque em WhatsApp Web</p>
-                  <p className="text-sm text-muted-foreground">4. Aponte seu celular para esta tela para capturar o código</p>
+                <p className="text-xs text-muted-foreground">
+                  Abra o WhatsApp → Menu → Dispositivos conectados → Conectar dispositivo
+                </p>
+                <div className="bg-blue-50 p-3 rounded-md text-xs text-blue-800 dark:bg-blue-900/20 dark:text-blue-200">
+                  💡 A conexão será mantida automaticamente após o scan. Este chip ficará disponível para envio de mensagens.
                 </div>
-                <div className="flex items-center gap-2 text-orange-600">
+                <div className="flex items-center justify-center gap-2 text-orange-600">
                   <Wifi className="h-4 w-4" />
                   <span className="text-sm">Aguardando conexão...</span>
                 </div>

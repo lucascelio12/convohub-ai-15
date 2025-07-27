@@ -33,29 +33,6 @@ class WhatsAppService {
     }
   }
 
-  async simulateScan(chipId: string, authToken: string): Promise<WhatsAppResponse> {
-    try {
-      const response = await fetch(`${this.baseUrl}/scan`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${authToken}`
-        },
-        body: JSON.stringify({ chipId })
-      });
-
-      const data = await response.json();
-      
-      if (!response.ok) {
-        throw new Error(data.error || 'Erro ao simular scan');
-      }
-
-      return data;
-    } catch (error) {
-      console.error('Erro ao simular scan:', error);
-      throw error;
-    }
-  }
 
   async getStatus(chipId: string, authToken: string): Promise<WhatsAppResponse> {
     try {
