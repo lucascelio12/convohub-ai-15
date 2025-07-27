@@ -1,5 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.52.1'
-import { makeWASocket, DisconnectReason, useMultiFileAuthState, BaileysEventMap } from 'https://esm.sh/@whiskeysockets/baileys@6.7.18'
+import { makeWASocket, DisconnectReason, useMultiFileAuthState } from 'https://esm.sh/@whiskeysockets/baileys@6.7.8?external=sharp'
 import { Boom } from 'https://esm.sh/@hapi/boom@10.0.1'
 import { join } from 'https://deno.land/std@0.208.0/path/mod.ts'
 
