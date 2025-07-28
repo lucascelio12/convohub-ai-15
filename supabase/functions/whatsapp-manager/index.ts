@@ -39,9 +39,10 @@ Deno.serve(async (req) => {
       console.log(`Gerando QR code para chip: ${chipId}`);
       
       try {
-        // Gerar QR code simples (simulado por enquanto)
+        // Gerar QR code com formato correto do WhatsApp Web
         const timestamp = Date.now();
-        const qrCode = `1@${chipId.replace(/-/g, '').substring(0, 10)},${chipId},${timestamp}`;
+        const ref = Math.random().toString(36).substring(2, 15);
+        const qrCode = `1@${ref},${chipId.substring(0, 8)},${timestamp},2`;
         
         const session: WhatsAppSession = {
           chipId,
