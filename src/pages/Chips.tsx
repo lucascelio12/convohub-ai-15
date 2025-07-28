@@ -15,6 +15,7 @@ import { useToast } from '@/hooks/use-toast';
 import { QRCodeSVG } from 'qrcode.react';
 import { whatsappService } from '@/services/whatsapp';
 import { useAuth } from '@/contexts/AuthContext';
+import { ChipWarming } from '@/components/ChipWarming';
 
 interface Chip {
   id: string;
@@ -180,8 +181,15 @@ export default function Chips() {
                 description: 'WhatsApp conectado com sucesso!',
               });
             } else if (statusResponse.status === 'connecting') {
-              // Ainda conectando, verificar novamente em 3 segundos
-              setTimeout(checkConnection, 3000);
+              // Ainda conectando, verificar novamente em 2 segundos
+              setTimeout(checkConnection, 2000);
+            } else if (statusResponse.status === 'failed') {
+              setConnectionStatus('failed');
+              toast({
+                title: 'Falha na Conexão',
+                description: 'Conexão expirou. Tente gerar um novo QR code.',
+                variant: 'destructive',
+              });
             }
           } catch (error) {
             console.error('Erro ao verificar status da conexão:', error);
@@ -337,6 +345,9 @@ export default function Chips() {
 
   return (
     <div className="space-y-6">
+      {/* Chip Warming Component */}
+      <ChipWarming />
+      
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold">Chips WhatsApp</h1>
@@ -588,7 +599,13 @@ export default function Chips() {
                   Abra o WhatsApp → Menu → Dispositivos conectados → Conectar dispositivo
                 </p>
                 <div className="bg-blue-50 p-3 rounded-md text-xs text-blue-800 dark:bg-blue-900/20 dark:text-blue-200">
-                  💡 A conexão será mantida automaticamente após o scan. Este chip ficará disponível para envio de mensagens.
+                  <div className="font-medium mb-2">📋 Instruções importantes:</div>
+                  <ul className="space-y-1 text-left">
+                    <li>• Mantenha o WhatsApp Web fechado no navegador</li>
+                    <li>• Use apenas um dispositivo por conta WhatsApp</li>
+                    <li>• Após o scan, NÃO feche o WhatsApp do celular</li>
+                    <li>• A conexão é mantida automaticamente pelo sistema</li>
+                  </ul>
                 </div>
                 <div className="flex items-center justify-center gap-2 text-orange-600">
                   <Wifi className="h-4 w-4" />

@@ -12,8 +12,10 @@ interface WhatsAppSession {
   authDir: string;
 }
 
-// Store active sessions
+// Store active sessions and warming sessions
 const sessions = new Map<string, WhatsAppSession>();
+const warmingSessions = new Map<string, any>();
+let warmingInterval: number | null = null;
 
 Deno.serve(async (req) => {
   // Handle CORS preflight
@@ -114,9 +116,9 @@ Deno.serve(async (req) => {
         )
       }
       
-      // Simular scan bem-sucedido após 30 segundos
+      // Simular scan bem-sucedido após 10 segundos para melhor UX
       const sessionAge = Date.now() - parseInt(session.qrCode?.split(',')[2] || '0');
-      if (sessionAge > 30000) {
+      if (sessionAge > 10000) {
         session.status = 'connected';
         sessions.set(chipId, session);
         
@@ -124,6 +126,8 @@ Deno.serve(async (req) => {
           .from('chips')
           .update({ status: 'active' })
           .eq('id', chipId)
+          
+        console.log(`Chip ${chipId} conectado com sucesso após scan`);
       }
       
       return new Response(
@@ -171,6 +175,118 @@ Deno.serve(async (req) => {
           } 
         }
       );
+    }
+
+    // Warming endpoints
+    if (req.method === 'POST') {
+      const body = await req.json();
+      
+      if (body.action === 'start-warming') {
+        const { chipIds, intervalMinutes, messages } = body;
+        
+        console.log(`Iniciando aquecimento com ${chipIds.length} chips`);
+        
+        // Limpar aquecimento anterior se existir
+        if (warmingInterval) {
+          clearInterval(warmingInterval);
+        }
+        
+        // Salvar configuração do aquecimento
+        warmingSessions.set('current', {
+          chipIds,
+          intervalMinutes,
+          messages,
+          startTime: Date.now(),
+          messagesSent: 0
+        });
+        
+        // Função para enviar mensagens entre chips
+        const sendWarmingMessage = async () => {
+          const session = warmingSessions.get('current');
+          if (!session || session.chipIds.length < 2) return;
+          
+          try {
+            // Selecionar chips aleatórios
+            const fromChip = session.chipIds[Math.floor(Math.random() * session.chipIds.length)];
+            let toChip = session.chipIds[Math.floor(Math.random() * session.chipIds.length)];
+            
+            // Garantir que não seja o mesmo chip
+            while (toChip === fromChip && session.chipIds.length > 1) {
+              toChip = session.chipIds[Math.floor(Math.random() * session.chipIds.length)];
+            }
+            
+            // Buscar dados dos chips
+            const { data: fromChipData } = await supabase
+              .from('chips')
+              .select('phone_number')
+              .eq('id', fromChip)
+              .single();
+              
+            const { data: toChipData } = await supabase
+              .from('chips')
+              .select('phone_number')
+              .eq('id', toChip)
+              .single();
+              
+            if (fromChipData && toChipData) {
+              // Selecionar mensagem aleatória
+              const randomMessage = session.messages[Math.floor(Math.random() * session.messages.length)];
+              
+              console.log(`Aquecimento: ${fromChipData.phone_number} → ${toChipData.phone_number}: ${randomMessage}`);
+              
+              // Simular envio de mensagem de aquecimento
+              session.messagesSent += 1;
+              warmingSessions.set('current', session);
+              
+              // Incrementar uso do chip
+              await supabase.rpc('increment_chip_usage', { chip_id: fromChip });
+            }
+          } catch (error) {
+            console.error('Erro no aquecimento:', error);
+          }
+        };
+        
+        // Iniciar aquecimento
+        warmingInterval = setInterval(sendWarmingMessage, intervalMinutes * 60 * 1000);
+        
+        return new Response(
+          JSON.stringify({ 
+            success: true, 
+            message: 'Aquecimento iniciado',
+            chipCount: chipIds.length 
+          }),
+          { 
+            headers: { 
+              ...corsHeaders, 
+              'Content-Type': 'application/json' 
+            } 
+          }
+        );
+      }
+      
+      if (body.action === 'stop-warming') {
+        console.log('Parando aquecimento');
+        
+        if (warmingInterval) {
+          clearInterval(warmingInterval);
+          warmingInterval = null;
+        }
+        
+        warmingSessions.delete('current');
+        
+        return new Response(
+          JSON.stringify({ 
+            success: true, 
+            message: 'Aquecimento parado' 
+          }),
+          { 
+            headers: { 
+              ...corsHeaders, 
+              'Content-Type': 'application/json' 
+            } 
+          }
+        );
+      }
     }
 
     if (req.method === 'POST' && pathname.includes('/send-message')) {
