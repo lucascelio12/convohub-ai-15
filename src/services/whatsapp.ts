@@ -4,6 +4,7 @@ interface WhatsAppResponse {
   sessionId?: string;
   status?: string;
   error?: string;
+  message?: string;
 }
 
 class WhatsAppService {
@@ -52,6 +53,30 @@ class WhatsAppService {
       return data;
     } catch (error) {
       console.error('Erro ao obter status:', error);
+      throw error;
+    }
+  }
+
+  async simulateScan(chipId: string, authToken: string, scanned: boolean = true): Promise<WhatsAppResponse> {
+    try {
+      const response = await fetch(`${this.baseUrl}/scan`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`
+        },
+        body: JSON.stringify({ chipId, scanned })
+      });
+
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.error || 'Erro ao processar scan');
+      }
+
+      return data;
+    } catch (error) {
+      console.error('Erro ao processar scan:', error);
       throw error;
     }
   }

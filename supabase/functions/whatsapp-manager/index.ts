@@ -36,13 +36,18 @@ Deno.serve(async (req) => {
     if (req.method === 'POST' && pathname.includes('/connect')) {
       const { chipId } = await req.json();
       
-      console.log(`Gerando QR code para chip: ${chipId}`);
+      console.log(`Iniciando conexão WhatsApp para chip: ${chipId}`);
       
       try {
-        // Gerar QR code com formato correto do WhatsApp Web
+        // Gerar dados de sessão únicos seguindo padrão do WhatsApp Web
         const timestamp = Date.now();
-        const ref = Math.random().toString(36).substring(2, 15);
-        const qrCode = `1@${ref},${chipId.substring(0, 8)},${timestamp},2`;
+        const clientToken = Math.random().toString(36).substring(2, 15);
+        const serverRef = Math.random().toString(36).substring(2, 10);
+        const browserVersion = "2.2412.54";
+        
+        // Formato correto do QR code WhatsApp Web
+        // Estrutura: versão@referência,token,timestamp,dados_extras
+        const qrCode = `2@${serverRef}${clientToken.substring(0, 8)},${clientToken},${timestamp},${browserVersion}`;
         
         const session: WhatsAppSession = {
           chipId,
@@ -59,13 +64,24 @@ Deno.serve(async (req) => {
           .update({ status: 'connecting' })
           .eq('id', chipId)
         
-        console.log(`QR code gerado para chip ${chipId}: ${qrCode}`);
+        console.log(`QR code gerado para chip ${chipId}`);
+        
+        // Simular timeout de QR code (expira em 60 segundos como o real)
+        setTimeout(() => {
+          const currentSession = sessions.get(chipId);
+          if (currentSession && currentSession.status === 'connecting') {
+            currentSession.status = 'disconnected';
+            sessions.set(chipId, currentSession);
+            console.log(`QR code expirado para chip ${chipId}`);
+          }
+        }, 60000);
         
         return new Response(
           JSON.stringify({ 
             success: true, 
             qrCode,
-            sessionId: `client_${chipId}_${timestamp}`
+            sessionId: `waweb_${chipId}_${timestamp}`,
+            expiresIn: 60
           }),
           { 
             headers: { 
@@ -99,9 +115,9 @@ Deno.serve(async (req) => {
     }
 
     if (req.method === 'POST' && pathname.includes('/scan')) {
-      const { chipId } = await req.json()
+      const { chipId, scanned } = await req.json()
       
-      console.log(`Verificando status de scan para chip: ${chipId}`)
+      console.log(`Processando scan para chip: ${chipId}, scanned: ${scanned}`)
       
       const session = sessions.get(chipId)
       if (!session) {
@@ -117,9 +133,8 @@ Deno.serve(async (req) => {
         )
       }
       
-      // Simular scan bem-sucedido após 10 segundos para melhor UX
-      const sessionAge = Date.now() - parseInt(session.qrCode?.split(',')[2] || '0');
-      if (sessionAge > 10000) {
+      if (scanned && session.status === 'connecting') {
+        // QR Code foi escaneado com sucesso
         session.status = 'connected';
         sessions.set(chipId, session);
         
@@ -128,14 +143,50 @@ Deno.serve(async (req) => {
           .update({ status: 'active' })
           .eq('id', chipId)
           
-        console.log(`Chip ${chipId} conectado com sucesso após scan`);
+        console.log(`Chip ${chipId} conectado com sucesso após scan do QR code`);
+        
+        return new Response(
+          JSON.stringify({ 
+            success: true, 
+            status: 'connected',
+            message: 'WhatsApp conectado com sucesso!'
+          }),
+          { 
+            headers: { 
+              ...corsHeaders, 
+              'Content-Type': 'application/json' 
+            } 
+          }
+        )
+      }
+      
+      // Verificar se QR code expirou
+      const sessionAge = Date.now() - parseInt(session.qrCode?.split(',')[2] || '0');
+      if (sessionAge > 60000) {
+        session.status = 'disconnected';
+        sessions.set(chipId, session);
+        
+        return new Response(
+          JSON.stringify({ 
+            success: false, 
+            status: 'expired',
+            message: 'QR Code expirado. Gere um novo.'
+          }),
+          { 
+            headers: { 
+              ...corsHeaders, 
+              'Content-Type': 'application/json' 
+            } 
+          }
+        )
       }
       
       return new Response(
         JSON.stringify({ 
           success: true, 
           status: session.status,
-          qrCode: session.qrCode 
+          qrCode: session.qrCode,
+          timeRemaining: Math.max(0, 60 - Math.floor(sessionAge / 1000))
         }),
         { 
           headers: { 

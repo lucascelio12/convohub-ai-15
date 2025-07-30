@@ -607,10 +607,49 @@ export default function Chips() {
                     <li>• A conexão é mantida automaticamente pelo sistema</li>
                   </ul>
                 </div>
-                <div className="flex items-center justify-center gap-2 text-orange-600">
-                  <Wifi className="h-4 w-4" />
-                  <span className="text-sm">Aguardando conexão...</span>
-                </div>
+                 <div className="flex items-center justify-center gap-2 text-orange-600">
+                   <Wifi className="h-4 w-4" />
+                   <span className="text-sm">Aguardando conexão...</span>
+                 </div>
+                 
+                 {/* Botão para simular scan - apenas para testes */}
+                 <div className="mt-4 pt-4 border-t">
+                   <Button 
+                     variant="outline" 
+                     size="sm" 
+                     className="w-full"
+                     onClick={async () => {
+                       if (!selectedChip || !user) return;
+                       
+                       try {
+                         const { data: { session } } = await supabase.auth.getSession();
+                         if (!session?.access_token) return;
+                         
+                         const response = await whatsappService.simulateScan(selectedChip.id, session.access_token, true);
+                         
+                         if (response.success && response.status === 'connected') {
+                           setQrDialogOpen(false);
+                           fetchChips();
+                           toast({
+                             title: 'Sucesso',
+                             description: response.message || 'WhatsApp conectado com sucesso!',
+                           });
+                         }
+                       } catch (error: any) {
+                         toast({
+                           title: 'Erro',
+                           description: 'Erro ao simular scan: ' + error.message,
+                           variant: 'destructive',
+                         });
+                       }
+                     }}
+                   >
+                     🧪 Simular Scan (Teste)
+                   </Button>
+                   <p className="text-xs text-muted-foreground text-center mt-1">
+                     Para testes - simula o scan do QR code
+                   </p>
+                 </div>
               </div>
             )}
           </div>
