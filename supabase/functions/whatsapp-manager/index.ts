@@ -39,15 +39,22 @@ Deno.serve(async (req) => {
       console.log(`Iniciando conexão WhatsApp para chip: ${chipId}`);
       
       try {
-        // Gerar dados de sessão únicos seguindo padrão do WhatsApp Web
+        // IMPORTANTE: Este é um QR code de SIMULAÇÃO
+        // Para funcionar com WhatsApp real, seria necessário Baileys ou WPPConnect
         const timestamp = Date.now();
-        const clientToken = Math.random().toString(36).substring(2, 15);
-        const serverRef = Math.random().toString(36).substring(2, 10);
-        const browserVersion = "2.2412.54";
+        const simulationId = Math.random().toString(36).substring(2, 15);
         
-        // Formato correto do QR code WhatsApp Web
-        // Estrutura: versão@referência,token,timestamp,dados_extras
-        const qrCode = `2@${serverRef}${clientToken.substring(0, 8)},${clientToken},${timestamp},${browserVersion}`;
+        // QR code de simulação - não funciona com WhatsApp real
+        const simulationData = {
+          type: 'whatsapp_simulation',
+          chipId,
+          timestamp,
+          simulationId,
+          message: 'SIMULAÇÃO - Use o botão "Simular Scan" para testar'
+        };
+        
+        // Codificar em base64 para simular um QR code real
+        const qrCode = btoa(JSON.stringify(simulationData));
         
         const session: WhatsAppSession = {
           chipId,

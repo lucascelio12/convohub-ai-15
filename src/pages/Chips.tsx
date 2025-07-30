@@ -589,22 +589,32 @@ export default function Chips() {
             
             {qrCode && (
               <div className="text-center space-y-4">
+                <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-200 dark:bg-yellow-900/20 dark:border-yellow-800">
+                  <div className="flex items-center gap-2 mb-2">
+                    <AlertTriangle className="h-5 w-5 text-yellow-600" />
+                    <span className="font-medium text-yellow-800 dark:text-yellow-200">
+                      ⚠️ SIMULAÇÃO DE DESENVOLVIMENTO
+                    </span>
+                  </div>
+                  <p className="text-sm text-yellow-700 dark:text-yellow-300">
+                    Este QR code é apenas para demonstração. Para WhatsApp real, seria necessário integrar Baileys ou WPPConnect.
+                  </p>
+                </div>
+                
                 <p className="text-sm text-muted-foreground">
-                  📱 Escaneie este QR Code com seu WhatsApp
+                  🧪 QR Code de Simulação (não funciona com WhatsApp real)
                 </p>
                 <div className="flex justify-center">
                   <QRCodeSVG value={qrCode} size={256} />
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  Abra o WhatsApp → Menu → Dispositivos conectados → Conectar dispositivo
-                </p>
+                
                 <div className="bg-blue-50 p-3 rounded-md text-xs text-blue-800 dark:bg-blue-900/20 dark:text-blue-200">
-                  <div className="font-medium mb-2">📋 Instruções importantes:</div>
+                  <div className="font-medium mb-2">🔧 Para funcionar com WhatsApp real:</div>
                   <ul className="space-y-1 text-left">
-                    <li>• Mantenha o WhatsApp Web fechado no navegador</li>
-                    <li>• Use apenas um dispositivo por conta WhatsApp</li>
-                    <li>• Após o scan, NÃO feche o WhatsApp do celular</li>
-                    <li>• A conexão é mantida automaticamente pelo sistema</li>
+                    <li>• Integrar biblioteca Baileys ou WPPConnect</li>
+                    <li>• Configurar servidor Node.js dedicado</li>
+                    <li>• Implementar WebSocket para comunicação real</li>
+                    <li>• Use o botão "Simular Scan" para testar a interface</li>
                   </ul>
                 </div>
                  <div className="flex items-center justify-center gap-2 text-orange-600">
