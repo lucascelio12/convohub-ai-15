@@ -5,25 +5,25 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
-import { Progress } from '@/components/ui/progress';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
-import { Plus, Smartphone, Signal, MoreVertical, AlertTriangle, QrCode, Settings, Wifi, Edit, Trash2 } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
-import { useToast } from '@/hooks/use-toast';
+import { Progress } from '@/components/ui/progress';
 import { QRCodeSVG } from 'qrcode.react';
-import { whatsappService } from '@/services/whatsapp';
-import { useAuth } from '@/contexts/AuthContext';
+import { Plus, Smartphone, Wifi, WifiOff, QrCode, Settings, Pencil, Trash2, AlertTriangle, Activity } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
 import { ChipWarming } from '@/components/ChipWarming';
+import { whatsappService } from '@/services/whatsapp';
+import { useToast } from '@/hooks/use-toast';
+import { useWhatsAppWebSocket } from '@/hooks/useWhatsAppWebSocket';
+import { useMultipleChips } from '@/hooks/useMultipleChips';
 
 interface Chip {
   id: string;
   name: string;
   phone_number: string;
-  status: 'active' | 'inactive' | 'blocked' | 'connecting' | 'disconnected';
+  status: 'connected' | 'disconnected' | 'connecting' | 'qr_generated' | 'error' | 'warming' | 'maintenance';
   priority: number;
   daily_limit: number;
+  monthly_limit?: number;
   current_usage: number;
   created_at: string;
   queue_id?: string;
@@ -44,41 +44,66 @@ export default function Chips() {
   const [configDialogOpen, setConfigDialogOpen] = useState(false);
   const [selectedChip, setSelectedChip] = useState<Chip | null>(null);
   const [qrCode, setQrCode] = useState<string>('');
-  const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'failed' | 'idle'>('idle');
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [newChip, setNewChip] = useState({
     name: '',
     phone_number: '',
-    daily_limit: 100,
+    daily_limit: 500,
+    monthly_limit: 15000,
     priority: 1
   });
-  const [editChip, setEditChip] = useState({
-    name: '',
-    phone_number: '',
-    daily_limit: 100,
-    priority: 1
-  });
+  const [editingChip, setEditingChip] = useState<Chip | null>(null);
+  const [selectedQueueId, setSelectedQueueId] = useState<string>('');
   const { toast } = useToast();
-  const { user } = useAuth();
+
+  // Hook para gerenciar múltiplos chips
+  const { 
+    connections, 
+    connectChip, 
+    disconnectChip, 
+    getQrCode, 
+    getChipStatus, 
+    getConnectionStats,
+    fetchAllConnections 
+  } = useMultipleChips();
+
+  // WebSocket para o chip selecionado
+  const { connected: wsConnected } = useWhatsAppWebSocket({
+    chipId: selectedChip?.id,
+    onQrCode: (qr) => {
+      setQrCode(qr);
+      console.log('QR Code recebido via WebSocket');
+    },
+    onStatusChange: (status) => {
+      console.log(`Status do chip ${selectedChip?.id}: ${status}`);
+      fetchAllConnections(); // Atualizar lista de conexões
+    },
+    onMessageReceived: (message) => {
+      console.log('Mensagem recebida:', message);
+      toast({
+        title: '💬 Nova mensagem',
+        description: `De ${message.from}: ${message.message}`,
+      });
+    },
+    onConnected: () => {
+      toast({
+        title: '✅ Conectado',
+        description: `Chip ${selectedChip?.name} conectado com sucesso!`,
+      });
+    },
+    onDisconnected: () => {
+      toast({
+        title: '❌ Desconectado',
+        description: `Chip ${selectedChip?.name} foi desconectado`,
+        variant: 'destructive',
+      });
+    }
+  });
 
   useEffect(() => {
     fetchChips();
     fetchQueues();
   }, []);
-
-  const fetchQueues = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('queues')
-        .select('id, name, color')
-        .order('name');
-
-      if (error) throw error;
-      setQueues((data as Queue[]) || []);
-    } catch (error: any) {
-      console.error('Error fetching queues:', error);
-    }
-  };
 
   const fetchChips = async () => {
     try {
@@ -100,6 +125,20 @@ export default function Chips() {
     }
   };
 
+  const fetchQueues = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('queues')
+        .select('*')
+        .order('name');
+
+      if (error) throw error;
+      setQueues((data as Queue[]) || []);
+    } catch (error: any) {
+      console.error('Erro ao buscar filas:', error);
+    }
+  };
+
   const createChip = async () => {
     if (!newChip.name.trim() || !newChip.phone_number.trim()) return;
 
@@ -110,13 +149,16 @@ export default function Chips() {
           name: newChip.name,
           phone_number: newChip.phone_number,
           daily_limit: newChip.daily_limit,
-          priority: newChip.priority
+          monthly_limit: newChip.monthly_limit,
+          priority: newChip.priority,
+          status: 'disconnected',
+          current_usage: 0
         });
 
       if (error) throw error;
       
       setDialogOpen(false);
-      setNewChip({ name: '', phone_number: '', daily_limit: 100, priority: 1 });
+      setNewChip({ name: '', phone_number: '', daily_limit: 500, monthly_limit: 15000, priority: 1 });
       fetchChips();
       
       toast({
@@ -133,115 +175,58 @@ export default function Chips() {
   };
 
   const startConnection = async (chip: Chip) => {
-    if (!user) {
-      toast({
-        title: 'Erro',
-        description: 'Usuário não autenticado',
-        variant: 'destructive',
-      });
-      return;
-    }
-
     setSelectedChip(chip);
-    setConnectionStatus('connecting');
-    setQrDialogOpen(true);
     setQrCode('');
-    
-    try {
-      console.log('Iniciando conexão WhatsApp para chip:', chip.name);
-      
-      // Obter token de autenticação do Supabase
-      const { data: { session } } = await supabase.auth.getSession();
-      
-      if (!session?.access_token) {
-        throw new Error('Token de autenticação não encontrado');
-      }
+    setQrDialogOpen(true);
 
-      // Chamar o edge function para iniciar conexão
-      const response = await whatsappService.startConnection(chip.id, session.access_token);
+    try {
+      console.log(`Iniciando conexão para chip: ${chip.id}`);
       
-      if (response.success && response.qrCode) {
-        setQrCode(response.qrCode);
-        setConnectionStatus('connected');
-        
-        console.log('QR Code real do WhatsApp gerado para chip:', chip.name);
-        
-        // Verificar status da conexão periodicamente
-        const checkConnection = async () => {
-          try {
-            const statusResponse = await whatsappService.getStatus(chip.id, session.access_token);
-            
-            if (statusResponse.status === 'connected') {
-              // Conexão estabelecida!
-              fetchChips();
-              setQrDialogOpen(false);
-              
-              toast({
-                title: 'Sucesso',
-                description: 'WhatsApp conectado com sucesso!',
-              });
-            } else if (statusResponse.status === 'connecting') {
-              // Ainda conectando, verificar novamente em 2 segundos
-              setTimeout(checkConnection, 2000);
-            } else if (statusResponse.status === 'failed') {
-              setConnectionStatus('failed');
-              toast({
-                title: 'Falha na Conexão',
-                description: 'Conexão expirou. Tente gerar um novo QR code.',
-                variant: 'destructive',
-              });
-            }
-          } catch (error) {
-            console.error('Erro ao verificar status da conexão:', error);
-          }
-        };
-        
-        // Iniciar verificação de status
-        setTimeout(checkConnection, 3000);
-        
-      } else {
-        throw new Error('Erro ao gerar QR code');
-      }
+      // Usar o hook de múltiplos chips
+      await connectChip(chip.id);
+      
+      // Tentar obter QR Code imediatamente
+      setTimeout(async () => {
+        const qr = await getQrCode(chip.id);
+        if (qr) {
+          setQrCode(qr);
+        }
+      }, 2000);
       
     } catch (error: any) {
-      console.error('Erro ao gerar QR code:', error);
-      setConnectionStatus('failed');
+      console.error('Erro ao iniciar conexão:', error);
       toast({
         title: 'Erro',
-        description: 'Erro ao gerar QR code: ' + error.message,
+        description: 'Erro ao iniciar conexão: ' + error.message,
         variant: 'destructive',
       });
     }
   };
 
   const openEditDialog = (chip: Chip) => {
-    setSelectedChip(chip);
-    setEditChip({
-      name: chip.name,
-      phone_number: chip.phone_number,
-      daily_limit: chip.daily_limit,
-      priority: chip.priority
-    });
+    setEditingChip(chip);
     setEditDialogOpen(true);
   };
 
   const updateChip = async () => {
-    if (!selectedChip || !editChip.name.trim() || !editChip.phone_number.trim()) return;
+    if (!editingChip) return;
 
     try {
       const { error } = await supabase
         .from('chips')
         .update({
-          name: editChip.name,
-          phone_number: editChip.phone_number,
-          daily_limit: editChip.daily_limit,
-          priority: editChip.priority
+          name: editingChip.name,
+          phone_number: editingChip.phone_number,
+          daily_limit: editingChip.daily_limit,
+          monthly_limit: editingChip.monthly_limit,
+          priority: editingChip.priority
         })
-        .eq('id', selectedChip.id);
+        .eq('id', editingChip.id);
 
       if (error) throw error;
       
       setEditDialogOpen(false);
+      setEditingChip(null);
       fetchChips();
       
       toast({
@@ -270,12 +255,12 @@ export default function Chips() {
       
       toast({
         title: 'Sucesso',
-        description: 'Chip excluído com sucesso!',
+        description: 'Chip removido com sucesso!',
       });
     } catch (error: any) {
       toast({
         title: 'Erro',
-        description: 'Erro ao excluir chip: ' + error.message,
+        description: 'Erro ao remover chip: ' + error.message,
         variant: 'destructive',
       });
     }
@@ -283,6 +268,7 @@ export default function Chips() {
 
   const openConfigDialog = (chip: Chip) => {
     setSelectedChip(chip);
+    setSelectedQueueId(chip.queue_id || '');
     setConfigDialogOpen(true);
   };
 
@@ -292,22 +278,24 @@ export default function Chips() {
     try {
       const { error } = await supabase
         .from('chips')
-        .update({ queue_id: queueId })
+        .update({ queue_id: queueId || null })
         .eq('id', selectedChip.id);
 
       if (error) throw error;
       
       setConfigDialogOpen(false);
+      setSelectedChip(null);
+      setSelectedQueueId('');
       fetchChips();
       
       toast({
         title: 'Sucesso',
-        description: 'Fila configurada com sucesso!',
+        description: 'Configuração salva com sucesso!',
       });
     } catch (error: any) {
       toast({
         title: 'Erro',
-        description: 'Erro ao configurar fila: ' + error.message,
+        description: 'Erro ao salvar configuração: ' + error.message,
         variant: 'destructive',
       });
     }
@@ -315,25 +303,38 @@ export default function Chips() {
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'active': return 'bg-green-100 text-green-800 border-green-200';
-      case 'connecting': return 'bg-yellow-100 text-yellow-800 border-yellow-200';
-      case 'disconnected': return 'bg-orange-100 text-orange-800 border-orange-200';
-      case 'inactive': return 'bg-gray-100 text-gray-800 border-gray-200';
-      case 'blocked': return 'bg-red-100 text-red-800 border-red-200';
-      default: return 'bg-gray-100 text-gray-800 border-gray-200';
+      case 'connected': return 'bg-green-100 text-green-800 border-green-200 dark:bg-green-900/20 dark:text-green-400';
+      case 'connecting': return 'bg-blue-100 text-blue-800 border-blue-200 dark:bg-blue-900/20 dark:text-blue-400';
+      case 'qr_generated': return 'bg-orange-100 text-orange-800 border-orange-200 dark:bg-orange-900/20 dark:text-orange-400';
+      case 'disconnected': return 'bg-red-100 text-red-800 border-red-200 dark:bg-red-900/20 dark:text-red-400';
+      case 'error': return 'bg-red-100 text-red-800 border-red-200 dark:bg-red-900/20 dark:text-red-400';
+      case 'warming': return 'bg-yellow-100 text-yellow-800 border-yellow-200 dark:bg-yellow-900/20 dark:text-yellow-400';
+      case 'maintenance': return 'bg-gray-100 text-gray-800 border-gray-200 dark:bg-gray-900/20 dark:text-gray-400';
+      default: return 'bg-gray-100 text-gray-800 border-gray-200 dark:bg-gray-900/20 dark:text-gray-400';
     }
   };
 
   const getStatusLabel = (status: string) => {
     switch (status) {
-      case 'active': return 'Ativo';
+      case 'connected': return 'Conectado';
       case 'connecting': return 'Conectando';
+      case 'qr_generated': return 'QR Code Gerado';
       case 'disconnected': return 'Desconectado';
-      case 'inactive': return 'Inativo';
-      case 'blocked': return 'Bloqueado';
-      default: return status;
+      case 'error': return 'Erro';
+      case 'warming': return 'Aquecendo';
+      case 'maintenance': return 'Manutenção';
+      default: return 'Desconhecido';
     }
   };
+
+  // Combinar status do banco com status do servidor
+  const getChipDisplayStatus = (chip: Chip) => {
+    const serverStatus = getChipStatus(chip.id);
+    return serverStatus ? serverStatus.status : chip.status;
+  };
+
+  // Estatísticas das conexões
+  const connectionStats = getConnectionStats();
 
   if (loading) {
     return (
@@ -348,10 +349,50 @@ export default function Chips() {
       {/* Chip Warming Component */}
       <ChipWarming />
       
+      {/* Estatísticas de Conexão */}
+      <div className="grid gap-4 md:grid-cols-4">
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2">
+              <Activity className="h-4 w-4 text-blue-500" />
+              <span className="text-sm font-medium">Total</span>
+            </div>
+            <p className="text-2xl font-bold">{connectionStats.total}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2">
+              <Wifi className="h-4 w-4 text-green-500" />
+              <span className="text-sm font-medium">Conectados</span>
+            </div>
+            <p className="text-2xl font-bold text-green-600">{connectionStats.connected}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2">
+              <QrCode className="h-4 w-4 text-orange-500" />
+              <span className="text-sm font-medium">Conectando</span>
+            </div>
+            <p className="text-2xl font-bold text-orange-600">{connectionStats.connecting}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2">
+              <WifiOff className="h-4 w-4 text-red-500" />
+              <span className="text-sm font-medium">Desconectados</span>
+            </div>
+            <p className="text-2xl font-bold text-red-600">{connectionStats.disconnected}</p>
+          </CardContent>
+        </Card>
+      </div>
+      
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold">Chips WhatsApp</h1>
-          <p className="text-muted-foreground">Gerencie os números do WhatsApp Business</p>
+          <p className="text-muted-foreground">Gerencie seus chips de WhatsApp</p>
         </div>
         
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
@@ -372,38 +413,50 @@ export default function Chips() {
                   id="name"
                   value={newChip.name}
                   onChange={(e) => setNewChip({ ...newChip, name: e.target.value })}
-                  placeholder="Ex: Chip Principal, Chip Vendas..."
+                  placeholder="Ex: Vendas 1"
                 />
               </div>
               <div>
-                <Label htmlFor="phone">Número do WhatsApp</Label>
+                <Label htmlFor="phone">Número WhatsApp</Label>
                 <Input
                   id="phone"
                   value={newChip.phone_number}
                   onChange={(e) => setNewChip({ ...newChip, phone_number: e.target.value })}
-                  placeholder="Ex: +5511999999999"
+                  placeholder="Ex: 5511999999999"
                 />
               </div>
-              <div>
-                <Label htmlFor="limit">Limite Diário de Mensagens</Label>
-                <Input
-                  id="limit"
-                  type="number"
-                  value={newChip.daily_limit}
-                  onChange={(e) => setNewChip({ ...newChip, daily_limit: parseInt(e.target.value) || 100 })}
-                  min="1"
-                />
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="dailyLimit">Limite Diário</Label>
+                  <Input
+                    id="dailyLimit"
+                    type="number"
+                    value={newChip.daily_limit}
+                    onChange={(e) => setNewChip({ ...newChip, daily_limit: parseInt(e.target.value) || 0 })}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="monthlyLimit">Limite Mensal</Label>
+                  <Input
+                    id="monthlyLimit"
+                    type="number"
+                    value={newChip.monthly_limit}
+                    onChange={(e) => setNewChip({ ...newChip, monthly_limit: parseInt(e.target.value) || 0 })}
+                  />
+                </div>
               </div>
               <div>
                 <Label htmlFor="priority">Prioridade</Label>
-                <Input
-                  id="priority"
-                  type="number"
-                  value={newChip.priority}
-                  onChange={(e) => setNewChip({ ...newChip, priority: parseInt(e.target.value) || 1 })}
-                  min="1"
-                  max="10"
-                />
+                <Select value={newChip.priority.toString()} onValueChange={(value) => setNewChip({ ...newChip, priority: parseInt(value) })}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="1">Alta (1)</SelectItem>
+                    <SelectItem value="2">Média (2)</SelectItem>
+                    <SelectItem value="3">Baixa (3)</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
               <div className="flex gap-2 justify-end">
                 <Button variant="outline" onClick={() => setDialogOpen(false)}>
@@ -422,9 +475,9 @@ export default function Chips() {
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12">
             <Smartphone className="h-12 w-12 text-muted-foreground mb-4" />
-            <h3 className="text-lg font-semibold mb-2">Nenhum chip cadastrado</h3>
+            <h3 className="text-lg font-semibold mb-2">Nenhum chip encontrado</h3>
             <p className="text-muted-foreground text-center mb-4">
-              Adicione seu primeiro chip do WhatsApp Business
+              Adicione seu primeiro chip WhatsApp para começar
             </p>
             <Button onClick={() => setDialogOpen(true)}>
               <Plus className="h-4 w-4 mr-2" />
@@ -434,255 +487,179 @@ export default function Chips() {
         </Card>
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {chips.map((chip) => {
-            const assignedQueue = queues.find(q => q.id === chip.queue_id);
-            return (
-              <Card key={chip.id} className="hover:shadow-md transition-shadow">
-                <CardHeader className="pb-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <Smartphone className="h-5 w-5 text-primary" />
+          {chips.map((chip) => (
+            <Card key={chip.id} className="hover:shadow-md transition-shadow">
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <Smartphone className="h-5 w-5 text-primary" />
+                    <div>
                       <CardTitle className="text-lg">{chip.name}</CardTitle>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Badge className={getStatusColor(chip.status)}>
-                        {getStatusLabel(chip.status)}
-                      </Badge>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="sm">
-                            <MoreVertical className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => openEditDialog(chip)}>
-                            <Edit className="h-4 w-4 mr-2" />
-                            Editar
-                          </DropdownMenuItem>
-                          <AlertDialog>
-                            <AlertDialogTrigger asChild>
-                              <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
-                                <Trash2 className="h-4 w-4 mr-2" />
-                                Excluir
-                              </DropdownMenuItem>
-                            </AlertDialogTrigger>
-                            <AlertDialogContent>
-                              <AlertDialogHeader>
-                                <AlertDialogTitle>Tem certeza?</AlertDialogTitle>
-                                <AlertDialogDescription>
-                                  Esta ação não pode ser desfeita. Isso excluirá permanentemente o chip "{chip.name}".
-                                </AlertDialogDescription>
-                              </AlertDialogHeader>
-                              <AlertDialogFooter>
-                                <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                                <AlertDialogAction onClick={() => deleteChip(chip.id)}>
-                                  Excluir
-                                </AlertDialogAction>
-                              </AlertDialogFooter>
-                            </AlertDialogContent>
-                          </AlertDialog>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
+                      <p className="text-sm text-muted-foreground">{chip.phone_number}</p>
                     </div>
                   </div>
-                  <p className="text-sm text-muted-foreground">{chip.phone_number}</p>
-                  {assignedQueue && (
-                    <div className="flex items-center gap-2 mt-2">
-                      <div 
-                        className="w-3 h-3 rounded-full" 
-                        style={{ backgroundColor: assignedQueue.color }}
-                      />
+                  <Badge 
+                    className={`${getStatusColor(getChipDisplayStatus(chip))} border`}
+                  >
+                    {getStatusLabel(getChipDisplayStatus(chip))}
+                  </Badge>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {/* Progress Bar */}
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm font-medium">Uso Diário</span>
                       <span className="text-sm text-muted-foreground">
-                        Fila: {assignedQueue.name}
+                        {chip.current_usage || 0} / {chip.daily_limit}
                       </span>
                     </div>
-                  )}
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    {/* Usage Progress */}
-                    <div>
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-sm font-medium">Uso Diário</span>
-                        <span className="text-sm text-muted-foreground">
-                          {chip.current_usage} / {chip.daily_limit}
-                        </span>
-                      </div>
-                      <Progress 
-                        value={(chip.current_usage / chip.daily_limit) * 100} 
-                        className="h-2"
-                      />
-                      {chip.current_usage / chip.daily_limit > 0.8 && (
-                        <div className="flex items-center gap-1 mt-1">
-                          <AlertTriangle className="h-3 w-3 text-yellow-500" />
-                          <span className="text-xs text-yellow-600">Próximo do limite</span>
-                        </div>
-                      )}
-                    </div>
+                    <Progress 
+                      value={chip.daily_limit > 0 ? ((chip.current_usage || 0) / chip.daily_limit) * 100 : 0} 
+                      className="h-2"
+                    />
+                  </div>
 
-                    {/* Stats */}
-                    <div className="grid grid-cols-2 gap-4 pt-3 border-t">
-                      <div className="text-center">
-                        <p className="text-sm font-medium">{chip.priority}</p>
-                        <p className="text-xs text-muted-foreground">Prioridade</p>
-                      </div>
-                      <div className="text-center">
-                        <div className="flex items-center justify-center gap-1">
-                          <Signal className="h-3 w-3 text-green-500" />
-                          <p className="text-sm font-medium">Online</p>
-                        </div>
-                        <p className="text-xs text-muted-foreground">Status</p>
-                      </div>
-                    </div>
+                  {/* Priority */}
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">Prioridade:</span>
+                    <Badge variant="outline">
+                      {chip.priority === 1 ? 'Alta' : chip.priority === 2 ? 'Média' : 'Baixa'}
+                    </Badge>
+                  </div>
 
-                    {/* Action Buttons */}
-                    <div className="flex gap-2 pt-2">
+                  {/* Action Buttons */}
+                  <div className="flex gap-2">
+                    {getChipDisplayStatus(chip) === 'connected' ? (
                       <Button 
                         variant="outline" 
                         size="sm" 
-                        className="flex-1"
+                        onClick={() => disconnectChip(chip.id)}
+                        className="text-red-600 hover:text-red-700"
+                      >
+                        <WifiOff className="h-4 w-4 mr-1" />
+                        Desconectar
+                      </Button>
+                    ) : (
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
                         onClick={() => startConnection(chip)}
                       >
-                        <QrCode className="h-4 w-4 mr-2" />
+                        <QrCode className="h-4 w-4 mr-1" />
                         QR Code
                       </Button>
-                      <Button 
-                        variant="outline" 
-                        size="sm" 
-                        className="flex-1"
-                        onClick={() => openConfigDialog(chip)}
-                      >
-                        <Settings className="h-4 w-4 mr-2" />
-                        Config
-                      </Button>
-                    </div>
-
-                    <div className="pt-1">
-                      <p className="text-xs text-muted-foreground">
-                        Adicionado em {new Date(chip.created_at).toLocaleDateString('pt-BR')}
-                      </p>
-                    </div>
+                    )}
+                    
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      onClick={() => openConfigDialog(chip)}
+                    >
+                      <Settings className="h-4 w-4 mr-1" />
+                      Config
+                    </Button>
+                    
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      onClick={() => openEditDialog(chip)}
+                    >
+                      <Pencil className="h-4 w-4 mr-1" />
+                      Editar
+                    </Button>
+                    
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      onClick={() => deleteChip(chip.id)}
+                      className="text-red-600 hover:text-red-700"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
                   </div>
-                </CardContent>
-              </Card>
-            );
-          })}
+                </div>
+              </CardContent>
+            </Card>
+          ))}
         </div>
       )}
 
       {/* QR Code Dialog */}
       <Dialog open={qrDialogOpen} onOpenChange={setQrDialogOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <QrCode className="h-5 w-5" />
-              Conectar WhatsApp - {selectedChip?.name}
-            </DialogTitle>
+            <DialogTitle>Conectar WhatsApp - {selectedChip?.name}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
-            {connectionStatus === 'connecting' && !qrCode && (
-              <div className="flex flex-col items-center py-8">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mb-4"></div>
-                <p className="text-sm text-muted-foreground">Gerando QR Code...</p>
-              </div>
-            )}
             
             {qrCode && (
               <div className="text-center space-y-4">
-                <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-200 dark:bg-yellow-900/20 dark:border-yellow-800">
+                <div className="bg-green-50 p-4 rounded-lg border border-green-200 dark:bg-green-900/20 dark:border-green-800">
                   <div className="flex items-center gap-2 mb-2">
-                    <AlertTriangle className="h-5 w-5 text-yellow-600" />
-                    <span className="font-medium text-yellow-800 dark:text-yellow-200">
-                      ⚠️ SIMULAÇÃO DE DESENVOLVIMENTO
+                    <Wifi className="h-5 w-5 text-green-600" />
+                    <span className="font-medium text-green-800 dark:text-green-200">
+                      ✅ QR CODE REAL - WhatsApp Pronto!
                     </span>
                   </div>
-                  <p className="text-sm text-yellow-700 dark:text-yellow-300">
-                    Este QR code é apenas para demonstração. Para WhatsApp real, seria necessário integrar Baileys ou WPPConnect.
+                  <p className="text-sm text-green-700 dark:text-green-300">
+                    Use seu WhatsApp para escanear este QR Code e conectar o chip.
                   </p>
                 </div>
                 
                 <p className="text-sm text-muted-foreground">
-                  🧪 QR Code de Simulação (não funciona com WhatsApp real)
+                  📱 Escaneie este QR Code com seu WhatsApp
                 </p>
                 <div className="flex justify-center">
                   <QRCodeSVG value={qrCode} size={256} />
                 </div>
                 
                 <div className="bg-blue-50 p-3 rounded-md text-xs text-blue-800 dark:bg-blue-900/20 dark:text-blue-200">
-                  <div className="font-medium mb-2">🔧 Para funcionar com WhatsApp real:</div>
+                  <div className="font-medium mb-2">📋 Instruções:</div>
                   <ul className="space-y-1 text-left">
-                    <li>• Integrar biblioteca Baileys ou WPPConnect</li>
-                    <li>• Configurar servidor Node.js dedicado</li>
-                    <li>• Implementar WebSocket para comunicação real</li>
-                    <li>• Use o botão "Simular Scan" para testar a interface</li>
+                    <li>• Abra WhatsApp → Menu → Dispositivos Conectados</li>
+                    <li>• Toque em "Conectar dispositivo"</li>
+                    <li>• Escaneie o QR Code acima</li>
+                    <li>• Aguarde a confirmação de conexão</li>
                   </ul>
                 </div>
-                 <div className="flex items-center justify-center gap-2 text-orange-600">
-                   <Wifi className="h-4 w-4" />
-                   <span className="text-sm">Aguardando conexão...</span>
-                 </div>
-                 
-                 {/* Botão para simular scan - apenas para testes */}
-                 <div className="mt-4 pt-4 border-t">
-                   <Button 
-                     variant="outline" 
-                     size="sm" 
-                     className="w-full"
-                     onClick={async () => {
-                       if (!selectedChip || !user) return;
-                       
-                       try {
-                         const { data: { session } } = await supabase.auth.getSession();
-                         if (!session?.access_token) return;
-                         
-                         const response = await whatsappService.simulateScan(selectedChip.id, session.access_token, true);
-                         
-                         if (response.success && response.status === 'connected') {
-                           setQrDialogOpen(false);
-                           fetchChips();
-                           toast({
-                             title: 'Sucesso',
-                             description: response.message || 'WhatsApp conectado com sucesso!',
-                           });
-                         }
-                       } catch (error: any) {
-                         toast({
-                           title: 'Erro',
-                           description: 'Erro ao simular scan: ' + error.message,
-                           variant: 'destructive',
-                         });
-                       }
-                     }}
-                   >
-                     🧪 Simular Scan (Teste)
-                   </Button>
-                   <p className="text-xs text-muted-foreground text-center mt-1">
-                     Para testes - simula o scan do QR code
-                   </p>
-                 </div>
               </div>
             )}
+
+            {!qrCode && (
+              <div className="text-center py-8">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
+                <p className="text-sm text-muted-foreground">
+                  Gerando QR Code... Aguarde alguns segundos.
+                </p>
+              </div>
+            )}
+
+            <div className="flex gap-2 justify-end">
+              <Button variant="outline" onClick={() => setQrDialogOpen(false)}>
+                Fechar
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>
 
-      {/* Configuration Dialog */}
+      {/* Config Dialog */}
       <Dialog open={configDialogOpen} onOpenChange={setConfigDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Settings className="h-5 w-5" />
-              Configurar - {selectedChip?.name}
-            </DialogTitle>
+            <DialogTitle>Configurar Chip - {selectedChip?.name}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div>
               <Label htmlFor="queue">Fila de Atendimento</Label>
-              <Select onValueChange={updateChipQueue}>
+              <Select value={selectedQueueId} onValueChange={setSelectedQueueId}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Selecione uma fila" />
+                  <SelectValue placeholder="Selecionar fila" />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="">Nenhuma fila</SelectItem>
                   {queues.map((queue) => (
                     <SelectItem key={queue.id} value={queue.id}>
                       <div className="flex items-center gap-2">
@@ -696,72 +673,91 @@ export default function Chips() {
                   ))}
                 </SelectContent>
               </Select>
-              <p className="text-sm text-muted-foreground mt-1">
-                Mensagens recebidas neste chip serão direcionadas para a fila selecionada
-              </p>
+            </div>
+            <div className="flex gap-2 justify-end">
+              <Button variant="outline" onClick={() => setConfigDialogOpen(false)}>
+                Cancelar
+              </Button>
+              <Button onClick={() => updateChipQueue(selectedQueueId)}>
+                Salvar
+              </Button>
             </div>
           </div>
         </DialogContent>
       </Dialog>
 
-      {/* Edit Chip Dialog */}
+      {/* Edit Dialog */}
       <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Edit className="h-5 w-5" />
-              Editar Chip - {selectedChip?.name}
-            </DialogTitle>
+            <DialogTitle>Editar Chip</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <Label htmlFor="edit-name">Nome do Chip</Label>
-              <Input
-                id="edit-name"
-                value={editChip.name}
-                onChange={(e) => setEditChip({ ...editChip, name: e.target.value })}
-                placeholder="Ex: Chip Principal, Chip Vendas..."
-              />
+          {editingChip && (
+            <div className="space-y-4">
+              <div>
+                <Label htmlFor="editName">Nome do Chip</Label>
+                <Input
+                  id="editName"
+                  value={editingChip.name}
+                  onChange={(e) => setEditingChip({ ...editingChip, name: e.target.value })}
+                  placeholder="Ex: Vendas 1"
+                />
+              </div>
+              <div>
+                <Label htmlFor="editPhone">Número WhatsApp</Label>
+                <Input
+                  id="editPhone"
+                  value={editingChip.phone_number}
+                  onChange={(e) => setEditingChip({ ...editingChip, phone_number: e.target.value })}
+                  placeholder="Ex: 5511999999999"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="editDailyLimit">Limite Diário</Label>
+                  <Input
+                    id="editDailyLimit"
+                    type="number"
+                    value={editingChip.daily_limit}
+                    onChange={(e) => setEditingChip({ ...editingChip, daily_limit: parseInt(e.target.value) || 0 })}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="editMonthlyLimit">Limite Mensal</Label>
+                  <Input
+                    id="editMonthlyLimit"
+                    type="number"
+                    value={editingChip.monthly_limit}
+                    onChange={(e) => setEditingChip({ ...editingChip, monthly_limit: parseInt(e.target.value) || 0 })}
+                  />
+                </div>
+              </div>
+              <div>
+                <Label htmlFor="editPriority">Prioridade</Label>
+                <Select 
+                  value={editingChip.priority.toString()} 
+                  onValueChange={(value) => setEditingChip({ ...editingChip, priority: parseInt(value) })}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="1">Alta (1)</SelectItem>
+                    <SelectItem value="2">Média (2)</SelectItem>
+                    <SelectItem value="3">Baixa (3)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex gap-2 justify-end">
+                <Button variant="outline" onClick={() => setEditDialogOpen(false)}>
+                  Cancelar
+                </Button>
+                <Button onClick={updateChip}>
+                  Salvar Alterações
+                </Button>
+              </div>
             </div>
-            <div>
-              <Label htmlFor="edit-phone">Número do WhatsApp</Label>
-              <Input
-                id="edit-phone"
-                value={editChip.phone_number}
-                onChange={(e) => setEditChip({ ...editChip, phone_number: e.target.value })}
-                placeholder="Ex: +5511999999999"
-              />
-            </div>
-            <div>
-              <Label htmlFor="edit-limit">Limite Diário de Mensagens</Label>
-              <Input
-                id="edit-limit"
-                type="number"
-                value={editChip.daily_limit}
-                onChange={(e) => setEditChip({ ...editChip, daily_limit: parseInt(e.target.value) || 100 })}
-                min="1"
-              />
-            </div>
-            <div>
-              <Label htmlFor="edit-priority">Prioridade</Label>
-              <Input
-                id="edit-priority"
-                type="number"
-                value={editChip.priority}
-                onChange={(e) => setEditChip({ ...editChip, priority: parseInt(e.target.value) || 1 })}
-                min="1"
-                max="10"
-              />
-            </div>
-            <div className="flex gap-2 justify-end">
-              <Button variant="outline" onClick={() => setEditDialogOpen(false)}>
-                Cancelar
-              </Button>
-              <Button onClick={updateChip}>
-                Salvar Alterações
-              </Button>
-            </div>
-          </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>
