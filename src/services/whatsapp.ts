@@ -8,15 +8,14 @@ interface WhatsAppResponse {
 }
 
 class WhatsAppService {
-  private baseUrl = 'https://rmmvbxgsniybuvlbhuvl.supabase.co/functions/v1/whatsapp-manager';
+  private baseUrl = 'http://localhost:3001/whatsapp';
 
   async startConnection(chipId: string, authToken: string): Promise<WhatsAppResponse> {
     try {
       const response = await fetch(`${this.baseUrl}/connect`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${authToken}`
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify({ chipId })
       });
@@ -38,10 +37,7 @@ class WhatsAppService {
   async getStatus(chipId: string, authToken: string): Promise<WhatsAppResponse> {
     try {
       const response = await fetch(`${this.baseUrl}/status?chipId=${chipId}`, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${authToken}`
-        }
+        method: 'GET'
       });
 
       const data = await response.json();
@@ -59,13 +55,12 @@ class WhatsAppService {
 
   async simulateScan(chipId: string, authToken: string, scanned: boolean = true): Promise<WhatsAppResponse> {
     try {
-      const response = await fetch(`${this.baseUrl}/scan`, {
+      const response = await fetch(`${this.baseUrl}/disconnect`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${authToken}`
+          'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ chipId, scanned })
+        body: JSON.stringify({ chipId })
       });
 
       const data = await response.json();
@@ -86,8 +81,7 @@ class WhatsAppService {
       const response = await fetch(`${this.baseUrl}/send-message`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${authToken}`
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify({ chipId, phone, message })
       });
