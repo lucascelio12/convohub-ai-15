@@ -15,6 +15,7 @@ interface Conversation {
   phone_number: string;
   contact_name?: string;
   status: 'new' | 'in_progress' | 'completed';
+  conversation_type: 'individual' | 'group';
   tags: string[];
   last_message_at: string;
   created_at: string;
@@ -63,7 +64,14 @@ export default function Conversations() {
         .order('last_message_at', { ascending: false });
 
       if (error) throw error;
-      setConversations((data as Conversation[]) || []);
+      
+      // Adicionar conversation_type padrão se não existir
+      const conversationsWithType = (data || []).map((conv: any) => ({
+        ...conv,
+        conversation_type: (conv as any).conversation_type || (conv.phone_number?.includes('@g.us') ? 'group' : 'individual')
+      }));
+      
+      setConversations(conversationsWithType as Conversation[]);
     } catch (error: any) {
       toast({
         title: 'Erro',
@@ -128,11 +136,53 @@ export default function Conversations() {
     fetchMessages(conversation.id);
   };
 
+  const finishConversation = async (conversationId: string) => {
+    try {
+      const { error } = await supabase
+        .from('conversations')
+        .update({ status: 'completed' })
+        .eq('id', conversationId);
+
+      if (error) throw error;
+      
+      fetchConversations();
+      toast({
+        title: 'Sucesso',
+        description: 'Conversa finalizada com sucesso!',
+        variant: 'default',
+      });
+    } catch (error: any) {
+      toast({
+        title: 'Erro',
+        description: 'Erro ao finalizar conversa: ' + error.message,
+        variant: 'destructive',
+      });
+    }
+  };
+
   const filteredConversations = conversations.filter(conv => {
     const matchesSearch = conv.phone_number.includes(searchTerm) || 
                          conv.contact_name?.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesStatus = activeTab === 'all' || conv.status === activeTab;
-    return matchesSearch && matchesStatus;
+    
+    let matchesTab = false;
+    switch (activeTab) {
+      case 'new':
+        matchesTab = conv.status === 'new' && conv.conversation_type === 'individual';
+        break;
+      case 'in_progress':
+        matchesTab = conv.status === 'in_progress' && conv.conversation_type === 'individual';
+        break;
+      case 'groups':
+        matchesTab = conv.conversation_type === 'group';
+        break;
+      case 'completed':
+        matchesTab = conv.status === 'completed';
+        break;
+      default:
+        matchesTab = true;
+    }
+    
+    return matchesSearch && matchesTab;
   });
 
   const getStatusColor = (status: string) => {
@@ -191,9 +241,11 @@ export default function Conversations() {
             </div>
             
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-              <TabsList className="grid w-full grid-cols-2">
+              <TabsList className="grid w-full grid-cols-4">
                 <TabsTrigger value="new" className="text-xs">Novas</TabsTrigger>
                 <TabsTrigger value="in_progress" className="text-xs">Em Andamento</TabsTrigger>
+                <TabsTrigger value="groups" className="text-xs">Grupos</TabsTrigger>
+                <TabsTrigger value="completed" className="text-xs">Finalizadas</TabsTrigger>
               </TabsList>
             </Tabs>
           </div>
@@ -290,9 +342,20 @@ export default function Conversations() {
                     </div>
                   </div>
                 </div>
-                <Button variant="ghost" size="sm">
-                  <MoreVertical className="h-4 w-4" />
-                </Button>
+                <div className="flex gap-2">
+                  {selectedConversation.status !== 'completed' && (
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      onClick={() => finishConversation(selectedConversation.id)}
+                    >
+                      Finalizar
+                    </Button>
+                  )}
+                  <Button variant="ghost" size="sm">
+                    <MoreVertical className="h-4 w-4" />
+                  </Button>
+                </div>
               </div>
 
               {/* Messages Area */}
