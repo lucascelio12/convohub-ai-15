@@ -11,6 +11,7 @@ import Queues from "./pages/Queues";
 import Chips from "./pages/Chips";
 import Campaigns from "./pages/Campaigns";
 import Reports from "./pages/Reports";
+import AdvancedReports from "./pages/AdvancedReports";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -34,6 +35,7 @@ const App = () => (
               <Route path="chips" element={<Chips />} />
               <Route path="campaigns" element={<Campaigns />} />
               <Route path="reports" element={<Reports />} />
+              <Route path="advanced-reports" element={<AdvancedReports />} />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             </Route>
             <Route path="*" element={<NotFound />} />

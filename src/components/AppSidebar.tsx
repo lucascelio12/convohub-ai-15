@@ -8,7 +8,8 @@ import {
   BarChart3, 
   Settings,
   LogOut,
-  User
+  User,
+  TrendingUp
 } from "lucide-react";
 import {
   Sidebar,
@@ -32,6 +33,7 @@ const menuItems = [
   { title: "Chips", url: "/chips", icon: Smartphone },
   { title: "Campanhas", url: "/campaigns", icon: Send },
   { title: "Relatórios", url: "/reports", icon: BarChart3 },
+  { title: "Relatórios Avançados", url: "/advanced-reports", icon: TrendingUp },
   { title: "Configurações", url: "/settings", icon: Settings },
 ];
 
