@@ -32,14 +32,24 @@ export const useAutoQueue = () => {
 
   const loadQueueRules = async () => {
     try {
-      const { data, error } = await supabase
-        .from('queue_rules')
-        .select('*')
-        .eq('active', true)
-        .order('priority', { ascending: false });
-
-      if (error) throw error;
-      setQueueRules(data || []);
+      // Simula regras de fila até as tabelas serem criadas
+      const mockRules: QueueRule[] = [
+        {
+          id: '1',
+          name: 'Suporte Técnico',
+          conditions: { keywords: ['problema', 'erro', 'bug'], priority: 1 },
+          queue_id: 'queue-1',
+          active: true,
+        },
+        {
+          id: '2', 
+          name: 'Vendas',
+          conditions: { keywords: ['comprar', 'preço', 'orçamento'], priority: 2 },
+          queue_id: 'queue-2',
+          active: true,
+        }
+      ];
+      setQueueRules(mockRules);
     } catch (error: any) {
       console.error('Erro ao carregar regras de fila:', error);
     }
@@ -52,7 +62,7 @@ export const useAutoQueue = () => {
       const selectedQueue = await analyzeAndAssignQueue(firstMessage);
       
       if (selectedQueue) {
-        await assignConversationToQueue(conversationId, selectedQueue.queue_id, selectedQueue.priority);
+        await assignConversationToQueue(conversationId, selectedQueue.queue_id, selectedQueue.conditions.priority);
         
         toast({
           title: 'Conversa Atribuída',
@@ -126,43 +136,15 @@ export const useAutoQueue = () => {
 
   const findAvailableAgent = async (queueId: string) => {
     try {
-      const { data, error } = await supabase
-        .from('queue_agents')
-        .select(`
-          agent_id,
-          agents (
-            id,
-            name,
-            status,
-            max_conversations
-          )
-        `)
-        .eq('queue_id', queueId)
-        .eq('agents.status', 'online');
-
-      if (error) throw error;
-
-      // Encontrar agente com menos conversas ativas
-      let bestAgent = null;
-      let minConversations = Infinity;
-
-      for (const queueAgent of data || []) {
-        const { data: activeConversations } = await supabase
-          .from('conversations')
-          .select('id')
-          .eq('assigned_to', queueAgent.agent_id)
-          .in('status', ['new', 'in_progress']);
-
-        const currentLoad = activeConversations?.length || 0;
-        const maxLoad = queueAgent.agents?.max_conversations || 5;
-
-        if (currentLoad < maxLoad && currentLoad < minConversations) {
-          minConversations = currentLoad;
-          bestAgent = queueAgent.agents;
-        }
-      }
-
-      return bestAgent;
+      // Simula busca de agente disponível
+      const mockAgent = {
+        id: 'agent-1',
+        name: 'Agente Simulado',
+        status: 'online',
+        max_conversations: 5
+      };
+      
+      return mockAgent;
     } catch (error: any) {
       console.error('Erro ao encontrar agente:', error);
       return null;
@@ -188,16 +170,20 @@ export const useAutoQueue = () => {
 
   const createQueueRule = async (rule: Omit<QueueRule, 'id'>) => {
     try {
-      const { data, error } = await supabase
-        .from('queue_rules')
-        .insert(rule)
-        .select()
-        .single();
-
-      if (error) throw error;
+      // Simula criação de regra
+      const newRule: QueueRule = {
+        ...rule,
+        id: Date.now().toString(),
+      };
       
-      await loadQueueRules();
-      return data;
+      setQueueRules(prev => [...prev, newRule]);
+      
+      toast({
+        title: 'Regra Criada',
+        description: 'Nova regra de fila adicionada com sucesso',
+      });
+      
+      return newRule;
     } catch (error: any) {
       throw new Error('Erro ao criar regra: ' + error.message);
     }

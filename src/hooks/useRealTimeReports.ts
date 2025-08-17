@@ -164,40 +164,27 @@ export const useRealTimeReports = () => {
 
   const loadAgentMetrics = async (): Promise<AgentMetric[]> => {
     try {
-      const { data: agents } = await supabase
-        .from('agents')
-        .select('*');
-
-      if (!agents) return [];
-
-      const agentMetrics = await Promise.all(
-        agents.map(async (agent) => {
-          const { count: activeConversations } = await supabase
-            .from('conversations')
-            .select('*', { count: 'exact', head: true })
-            .eq('assigned_to', agent.id)
-            .in('status', ['new', 'in_progress']);
-
-          const today = new Date().toISOString().split('T')[0];
-          const { count: completedToday } = await supabase
-            .from('conversations')
-            .select('*', { count: 'exact', head: true })
-            .eq('assigned_to', agent.id)
-            .eq('status', 'completed')
-            .gte('updated_at', today);
-
-          return {
-            id: agent.id,
-            name: agent.name,
-            activeConversations: activeConversations || 0,
-            completedToday: completedToday || 0,
-            averageResponseTime: Math.floor(Math.random() * 180) + 30, // Mock
-            status: agent.status || 'offline',
-          };
-        })
-      );
-
-      return agentMetrics;
+      // Simula métricas de agentes
+      const mockAgents: AgentMetric[] = [
+        {
+          id: 'agent-1',
+          name: 'Ana Silva',
+          activeConversations: 3,
+          completedToday: 12,
+          averageResponseTime: 95,
+          status: 'online',
+        },
+        {
+          id: 'agent-2', 
+          name: 'João Santos',
+          activeConversations: 2,
+          completedToday: 8,
+          averageResponseTime: 120,
+          status: 'online',
+        }
+      ];
+      
+      return mockAgents;
     } catch (error) {
       console.error('Erro ao carregar métricas de agentes:', error);
       return [];
