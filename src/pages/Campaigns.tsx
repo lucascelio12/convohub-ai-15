@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
 import { Plus, Send, Users, MessageSquare, MoreVertical, Play, Pause } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 
 interface Campaign {
@@ -30,6 +31,7 @@ export default function Campaigns() {
     name: '',
     message_template: ''
   });
+  const { user } = useAuth();
   const { toast } = useToast();
 
   useEffect(() => {
@@ -64,7 +66,8 @@ export default function Campaigns() {
         .from('campaigns')
         .insert({
           name: newCampaign.name,
-          message_template: newCampaign.message_template
+          message_template: newCampaign.message_template,
+          created_by: user?.id || ''
         });
 
       if (error) throw error;

@@ -252,18 +252,13 @@ export const useAutoResponse = () => {
   };
 
   const endChatbotSession = async (sessionId: string) => {
-    await supabase
-      .from('chatbot_sessions')
-      .update({ active: false })
-      .eq('id', sessionId);
+    // Mock chatbot session end
+    console.log('Ending chatbot session:', sessionId);
   };
 
   const moveToNextStep = async (conversationId: string, nextStepId: string, sessionId: string) => {
-    // Atualizar sessão com próximo passo
-    await supabase
-      .from('chatbot_sessions')
-      .update({ current_step: nextStepId })
-      .eq('id', sessionId);
+    // Mock step movement
+    console.log('Moving to next step:', nextStepId, 'for session:', sessionId);
 
     // Encontrar e enviar próxima mensagem
     const flow = chatbotFlows.find(f => f.steps.some(s => s.id === nextStepId));

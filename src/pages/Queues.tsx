@@ -7,18 +7,21 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Label } from '@/components/ui/label';
 import { Plus, Users, Settings, MoreVertical } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 
 interface Queue {
   id: string;
   name: string;
   description?: string;
-  color: string;
+  active: boolean;
+  created_by: string;
   created_at: string;
-  created_by?: string;
+  updated_at: string;
 }
 
 export default function Queues() {
+  const { user } = useAuth();
   const [queues, setQueues] = useState<Queue[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -41,7 +44,7 @@ export default function Queues() {
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      setQueues((data as Queue[]) || []);
+      setQueues(data || []);
     } catch (error: any) {
       toast({
         title: 'Erro',
@@ -62,7 +65,7 @@ export default function Queues() {
         .insert({
           name: newQueue.name,
           description: newQueue.description,
-          color: newQueue.color
+          created_by: user?.id || ''
         });
 
       if (error) throw error;
@@ -182,8 +185,7 @@ export default function Queues() {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <div 
-                      className="w-4 h-4 rounded-full" 
-                      style={{ backgroundColor: queue.color }}
+                      className="w-4 h-4 rounded-full bg-primary" 
                     />
                     <CardTitle className="text-lg">{queue.name}</CardTitle>
                   </div>
