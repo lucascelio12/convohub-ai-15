@@ -67,6 +67,11 @@ export function AppSidebar() {
       return ['conversations', 'reports'].some(allowed => item.url.includes(allowed));
     }
     
+    // User padrão tem acesso a funcionalidades básicas
+    if (profile.role === 'user') {
+      return ['conversations', 'queues', 'chips', 'campaigns', 'reports'].some(allowed => item.url.includes(allowed));
+    }
+    
     return false;
   };
 
