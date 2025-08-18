@@ -68,7 +68,7 @@ export default function Conversations() {
       // Adicionar conversation_type padrão se não existir
       const conversationsWithType = (data || []).map((conv: any) => ({
         ...conv,
-        conversation_type: (conv as any).conversation_type || (conv.phone_number?.includes('@g.us') ? 'group' : 'individual')
+        conversation_type: conv.conversation_type || (conv.phone_number?.includes('@g.us') ? 'group' : 'individual')
       }));
       
       setConversations(conversationsWithType as Conversation[]);

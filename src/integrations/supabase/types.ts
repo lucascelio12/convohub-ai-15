@@ -132,10 +132,11 @@ export type Database = {
           assigned_to: string | null
           chip_id: string | null
           contact_name: string | null
-          contact_phone: string
+          conversation_type: string | null
           created_at: string
           id: string
           last_message_at: string | null
+          phone_number: string
           priority: number | null
           queue_id: string | null
           status: string
@@ -145,10 +146,11 @@ export type Database = {
           assigned_to?: string | null
           chip_id?: string | null
           contact_name?: string | null
-          contact_phone: string
+          conversation_type?: string | null
           created_at?: string
           id?: string
           last_message_at?: string | null
+          phone_number: string
           priority?: number | null
           queue_id?: string | null
           status?: string
@@ -158,10 +160,11 @@ export type Database = {
           assigned_to?: string | null
           chip_id?: string | null
           contact_name?: string | null
-          contact_phone?: string
+          conversation_type?: string | null
           created_at?: string
           id?: string
           last_message_at?: string | null
+          phone_number?: string
           priority?: number | null
           queue_id?: string | null
           status?: string
@@ -287,6 +290,7 @@ export type Database = {
       queues: {
         Row: {
           active: boolean
+          color: string | null
           created_at: string
           created_by: string
           description: string | null
@@ -296,6 +300,7 @@ export type Database = {
         }
         Insert: {
           active?: boolean
+          color?: string | null
           created_at?: string
           created_by: string
           description?: string | null
@@ -305,6 +310,7 @@ export type Database = {
         }
         Update: {
           active?: boolean
+          color?: string | null
           created_at?: string
           created_by?: string
           description?: string | null
