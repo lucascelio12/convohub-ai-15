@@ -17,7 +17,7 @@ export function useMultipleChips() {
   const [serverAvailable, setServerAvailable] = useState(false);
 
   // URL do servidor WhatsApp (configurável)
-  const WHATSAPP_SERVER_URL = process.env.VITE_WHATSAPP_SERVER_URL || 'http://localhost:3001';
+  const WHATSAPP_SERVER_URL = import.meta.env.VITE_WHATSAPP_SERVER_URL || 'http://localhost:3001';
 
   // Conectar ao WebSocket para atualizações em tempo real (apenas se servidor disponível)
   useEffect(() => {
