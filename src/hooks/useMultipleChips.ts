@@ -1,15 +1,82 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { whatsappService } from '@/services/whatsapp';
+import { io, Socket } from 'socket.io-client';
 
 interface ChipConnection {
   chipId: string;
-  status: 'disconnected' | 'connecting' | 'qr_generated' | 'connected' | 'error';
+  status: 'disconnected' | 'connecting' | 'qr_ready' | 'connected' | 'error' | 'authenticated';
   hasQrCode: boolean;
+  isReady?: boolean;
+  lastSeen?: string;
 }
 
 export function useMultipleChips() {
   const [connections, setConnections] = useState<ChipConnection[]>([]);
   const [loading, setLoading] = useState(false);
+  const [socket, setSocket] = useState<Socket | null>(null);
+
+  // Conectar ao WebSocket para atualizações em tempo real
+  useEffect(() => {
+    const socketConnection = io('http://localhost:3001');
+    setSocket(socketConnection);
+
+    // Ouvir atualizações de status
+    socketConnection.on('status_updated', (data) => {
+      console.log('Status atualizado:', data);
+      updateConnectionStatus(data.chipId, data.status, data.status === 'connected');
+    });
+
+    // Ouvir atualizações de QR Code
+    socketConnection.on('qr_updated', (data) => {
+      console.log('QR Code atualizado:', data);
+      updateConnectionStatus(data.chipId, data.status, false, true);
+    });
+
+    // Ouvir mensagens recebidas
+    socketConnection.on('message_received', (data) => {
+      console.log('Mensagem recebida:', data);
+      // Aqui você pode adicionar lógica adicional para processar mensagens
+    });
+
+    // Ouvir status inicial das conexões
+    socketConnection.on('connections_status', (data) => {
+      console.log('Status das conexões:', data);
+      const mappedConnections = data.connections.map((conn: any) => ({
+        chipId: conn.chipId,
+        status: conn.status,
+        hasQrCode: conn.status === 'qr_ready',
+        isReady: conn.isReady,
+        lastSeen: conn.lastSeen
+      }));
+      setConnections(mappedConnections);
+    });
+
+    return () => {
+      socketConnection.disconnect();
+    };
+  }, []);
+
+  // Atualizar status de uma conexão específica
+  const updateConnectionStatus = useCallback((chipId: string, status: string, isReady: boolean = false, hasQrCode: boolean = false) => {
+    setConnections(prev => {
+      const existingIndex = prev.findIndex(conn => conn.chipId === chipId);
+      const updatedConnection = {
+        chipId,
+        status: status as ChipConnection['status'],
+        hasQrCode,
+        isReady,
+        lastSeen: new Date().toISOString()
+      };
+
+      if (existingIndex >= 0) {
+        const newConnections = [...prev];
+        newConnections[existingIndex] = updatedConnection;
+        return newConnections;
+      } else {
+        return [...prev, updatedConnection];
+      }
+    });
+  }, []);
 
   // Fetch status de todas as conexões
   const fetchAllConnections = async () => {
@@ -19,7 +86,14 @@ export function useMultipleChips() {
       
       if (response.ok) {
         const data = await response.json();
-        setConnections(data.connections || []);
+        const mappedConnections = data.connections.map((conn: any) => ({
+          chipId: conn.chipId,
+          status: conn.status,
+          hasQrCode: conn.hasQrCode,
+          isReady: conn.isReady,
+          lastSeen: conn.lastSeen
+        }));
+        setConnections(mappedConnections);
       } else {
         console.log('Servidor WhatsApp não disponível');
         setConnections([]);
@@ -86,8 +160,12 @@ export function useMultipleChips() {
   // Obter QR Code de um chip específico
   const getQrCode = async (chipId: string): Promise<string | null> => {
     try {
-      const response = await whatsappService.getStatus(chipId, '');
-      return response.qrCode || null;
+      const response = await fetch(`http://localhost:3001/whatsapp/status?chipId=${chipId}`);
+      if (response.ok) {
+        const data = await response.json();
+        return data.qrCode || null;
+      }
+      return null;
     } catch (error) {
       console.error(`Erro ao obter QR Code do chip ${chipId}:`, error);
       return null;
@@ -118,7 +196,7 @@ export function useMultipleChips() {
   const getConnectionStats = () => {
     const total = connections.length;
     const connected = connections.filter(c => c.status === 'connected').length;
-    const connecting = connections.filter(c => c.status === 'connecting' || c.status === 'qr_generated').length;
+    const connecting = connections.filter(c => c.status === 'connecting' || c.status === 'qr_ready').length;
     const disconnected = connections.filter(c => c.status === 'disconnected').length;
     const error = connections.filter(c => c.status === 'error').length;
 
@@ -143,6 +221,7 @@ export function useMultipleChips() {
   return {
     connections,
     loading,
+    socket,
     connectChip,
     disconnectChip,
     getQrCode,
@@ -150,6 +229,7 @@ export function useMultipleChips() {
     getChipStatus,
     getConnectedChips,
     getConnectionStats,
-    fetchAllConnections
+    fetchAllConnections,
+    updateConnectionStatus
   };
 }

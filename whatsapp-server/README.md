@@ -1,134 +1,188 @@
-# 📱 Servidor WhatsApp com Baileys
+# WhatsApp Server
 
-Servidor Node.js para integração WhatsApp usando Baileys - **FUNCIONA DE VERDADE!**
+Servidor Node.js para gerenciar múltiplas conexões WhatsApp usando whatsapp-web.js.
 
-## 🚀 Instalação Rápida
+## 🚀 Funcionalidades
 
-### 1. Instalar dependências:
+- **Múltiplas Sessões**: Suporte a múltiplos chips WhatsApp simultaneamente
+- **QR Code Real**: Geração de QR code real do WhatsApp Web
+- **Tempo Real**: WebSocket para atualizações de status e mensagens
+- **Webhook**: Sistema de webhook para receber mensagens
+- **Auto Reconnect**: Reconexão automática em caso de queda
+- **Persistência**: Sessões mantidas entre reinicializações
+- **Mídia**: Suporte para envio e recebimento de arquivos
+
+## 📦 Instalação
+
 ```bash
 cd whatsapp-server
 npm install
 ```
 
-### 2. Rodar o servidor:
-```bash
-# Desenvolvimento (com auto-reload)
-npm run dev
+## ⚙️ Configuração
 
-# Produção
+1. Copie o arquivo de exemplo:
+```bash
+cp .env.example .env
+```
+
+2. Configure as variáveis no arquivo `.env`:
+```env
+PORT=3001
+WEBHOOK_URL=http://localhost:5173/api/webhook
+SUPABASE_URL=https://seu-projeto.supabase.co
+SUPABASE_KEY=sua-chave-supabase
+```
+
+## 🏃‍♂️ Execução
+
+### Desenvolvimento
+```bash
+npm run dev
+```
+
+### Produção
+```bash
 npm start
 ```
 
-O servidor roda na porta **3001**: http://localhost:3001
+## 📡 API Endpoints
 
-## 📋 Como Usar
-
-### 1. Conectar chip:
-```bash
-curl -X POST http://localhost:3001/whatsapp/connect \
-  -H "Content-Type: application/json" \
-  -d '{"chipId": "chip001"}'
+### POST /whatsapp/connect
+Conecta um novo chip WhatsApp
+```json
+{
+  "chipId": "chip-001"
+}
 ```
 
-### 2. Obter QR Code:
-```bash
-curl http://localhost:3001/whatsapp/status?chipId=chip001
+### GET /whatsapp/status?chipId=chip-001
+Obtém status e QR code de um chip
+
+### GET /whatsapp/connections
+Lista todas as conexões ativas
+
+### POST /whatsapp/send-message
+Envia mensagem via chip específico
+```json
+{
+  "chipId": "chip-001",
+  "to": "5511999999999@c.us",
+  "message": "Olá! Mensagem enviada via API"
+}
 ```
 
-### 3. Enviar mensagem:
-```bash
-curl -X POST http://localhost:3001/whatsapp/send-message \
-  -H "Content-Type: application/json" \
-  -d '{
-    "chipId": "chip001",
-    "phone": "5511999999999",
-    "message": "Olá! Teste do sistema"
-  }'
+### POST /whatsapp/disconnect
+Desconecta um chip
+```json
+{
+  "chipId": "chip-001"
+}
 ```
 
-## 🔗 Integração com o Frontend
+## 🔌 WebSocket Events
 
-O frontend já está configurado para usar este servidor. Apenas certifique-se de que:
+O servidor emite os seguintes eventos via WebSocket:
 
-1. O servidor está rodando na porta 3001
-2. O CORS está liberado
-3. As rotas estão acessíveis
+- `qr_updated` - Novo QR code disponível
+- `status_updated` - Status de conexão alterado
+- `message_received` - Nova mensagem recebida
+- `message_status` - Status de entrega alterado
+- `connections_status` - Status de todas as conexões
 
-## 📁 Estrutura de Arquivos
+## 📱 Conectar no Frontend
+
+```javascript
+import io from 'socket.io-client';
+
+const socket = io('http://localhost:3001');
+
+socket.on('qr_updated', (data) => {
+  console.log('QR Code:', data.qrCode);
+});
+
+socket.on('message_received', (data) => {
+  console.log('Nova mensagem:', data);
+});
+```
+
+## 🐳 Docker (Opcional)
+
+```dockerfile
+FROM node:18-alpine
+
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci --only=production
+
+COPY . .
+
+EXPOSE 3001
+CMD ["npm", "start"]
+```
+
+## 📂 Estrutura de Arquivos
 
 ```
 whatsapp-server/
-├── package.json          # Dependências
-├── server.js             # Servidor principal
-├── README.md             # Este arquivo
-├── auth_sessions/        # Sessões WhatsApp (criado automaticamente)
-├── whatsapp.log          # Logs do sistema
-└── node_modules/         # Dependências instaladas
+├── server.js           # Servidor principal
+├── package.json        # Dependências
+├── .env.example       # Exemplo de configuração
+├── auth/              # Dados de autenticação (criado automaticamente)
+└── README.md          # Esta documentação
 ```
 
-## 🛠 APIs Disponíveis
+## 🔧 Desenvolvimento
 
-| Método | Endpoint | Descrição |
-|--------|----------|-----------|
-| POST | `/whatsapp/connect` | Conectar chip |
-| GET | `/whatsapp/status` | Status e QR Code |
-| POST | `/whatsapp/send-message` | Enviar mensagem |
-| POST | `/whatsapp/disconnect` | Desconectar chip |
-| GET | `/health` | Status do servidor |
-
-## ⚙️ Configuração no Frontend
-
-Atualize o arquivo `src/services/whatsapp.ts` para usar o servidor local:
-
-```typescript
-private baseUrl = 'http://localhost:3001/whatsapp';
+### Logs
+O servidor gera logs detalhados para debugging:
+```bash
+[chip-001] Inicializando cliente WhatsApp...
+[chip-001] QR Code gerado
+[chip-001] Cliente pronto!
+[chip-001] Nova mensagem de 5511999999999@c.us: Olá!
 ```
 
-## 🔒 Segurança para Produção
+### Reconexão Automática
+- Reconexão automática em caso de falhas
+- Limpeza de sessões inativas a cada 30 minutos
+- Persistência de dados de autenticação
 
-Para usar em produção:
-
-1. Configure HTTPS
-2. Adicione autenticação JWT
-3. Use variáveis de ambiente
-4. Configure firewall
-5. Use PM2 para gerenciar processos
-
-## 📱 Como Funciona
-
-1. **Conectar**: Cria sessão WhatsApp usando Baileys
-2. **QR Code**: Gera QR Code real do WhatsApp
-3. **Scanner**: Use WhatsApp do celular para escanear
-4. **Enviar**: Envia mensagens reais pelo WhatsApp
+### Webhook Integration
+Configure o `WEBHOOK_URL` para receber eventos:
+```json
+{
+  "event": "message_received",
+  "chipId": "chip-001",
+  "data": {
+    "from": "5511999999999@c.us",
+    "body": "Mensagem recebida",
+    "timestamp": 1640995200
+  }
+}
+```
 
 ## 🚨 Importante
 
-- **Cada chip precisa de um número WhatsApp diferente**
-- **Mantenha o WhatsApp do celular sempre online**
-- **Não use WhatsApp Web simultaneamente**
-- **Sessões são salvas automaticamente**
+1. **Dependências do Sistema**: O whatsapp-web.js requer Chrome/Chromium
+2. **Memória**: Cada sessão usa ~100-200MB de RAM
+3. **Armazenamento**: Dados de auth são salvos em `./auth/`
+4. **Firewall**: Certifique-se que a porta está aberta
+5. **SSL**: Para produção, use HTTPS
 
-## 🐛 Troubleshooting
+## 🆘 Troubleshooting
 
-### Erro de conexão:
-```bash
-# Verificar se o servidor está rodando
-curl http://localhost:3001/health
-```
+### QR Code não aparece
+- Verifique se o Chrome está instalado
+- Limpe a pasta `auth/chipId`
+- Restart o servidor
 
-### QR Code não aparece:
-- Aguarde alguns segundos após conectar
-- Verifique os logs no terminal
-- Tente desconectar e conectar novamente
+### Desconexões frequentes
+- Verifique conexão com internet
+- Aumentar timeout no .env
+- Verificar logs para erros específicos
 
-### Mensagem não envia:
-- Verifique se o chip está conectado
-- Confirme o formato do número (com código do país)
-- Teste com um número válido
-
-## 📞 Suporte
-
-Se tiver problemas:
-1. Verifique os logs no terminal
-2. Confirme que todas as dependências estão instaladas
-3. Teste as APIs individualmente com curl
+### Mensagens não chegam
+- Verificar webhook URL
+- Testar conectividade com Supabase
+- Validar permissões de CORS

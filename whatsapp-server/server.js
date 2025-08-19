@@ -1,223 +1,186 @@
 const express = require('express');
 const cors = require('cors');
-const { default: makeWASocket, DisconnectReason, useMultiFileAuthState } = require('@whiskeysockets/baileys');
-const P = require('pino');
+const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
 const QRCode = require('qrcode');
-const NodeCache = require('node-cache');
-const WebSocket = require('ws');
+const { Server } = require('socket.io');
 const http = require('http');
+const fs = require('fs-extra');
+const path = require('path');
+const axios = require('axios');
+const cron = require('node-cron');
 
 const app = express();
 const server = http.createServer(app);
-const port = 3001;
-
-// WebSocket Server para sincronização em tempo real
-const wss = new WebSocket.Server({ server });
-
-// Cache para sessões ativas
-const sessionsCache = new NodeCache({ stdTTL: 600 }); // 10 minutos
-const activeSockets = new Map();
-const wsClients = new Map(); // chipId -> WebSocket connections
+const io = new Server(server, {
+  cors: {
+    origin: "*",
+    methods: ["GET", "POST"]
+  }
+});
 
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-// Logger
-const logger = P({ timestamp: () => `,"time":"${new Date().toJSON()}"` }, P.destination('./whatsapp.log'));
+// Configurações
+const PORT = process.env.PORT || 3001;
+const WEBHOOK_URL = process.env.WEBHOOK_URL || 'http://localhost:5173/api/webhook';
+const SUPABASE_URL = process.env.SUPABASE_URL || 'https://uncjxmnfdidrkakpasjy.supabase.co';
+const SUPABASE_KEY = process.env.SUPABASE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVuY2p4bW5mZGlkcmtha3Bhc2p5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTU0NTMwMTEsImV4cCI6MjA3MTAyOTAxMX0.FHhiMkmRS-jNOqaTZu3J-LAX7bmLxQu8XKytEUz0roY';
 
-// WebSocket para sincronização em tempo real
-wss.on('connection', (ws, req) => {
-  console.log('Cliente WebSocket conectado');
-  
-  ws.on('message', (message) => {
+// Storage para múltiplas sessões
+const sessions = new Map();
+const qrCodes = new Map();
+const connectionStatus = new Map();
+
+// Classe para gerenciar sessões WhatsApp
+class WhatsAppManager {
+  constructor(chipId) {
+    this.chipId = chipId;
+    this.client = null;
+    this.isReady = false;
+    this.qrCode = null;
+    this.status = 'disconnected';
+    this.lastSeen = new Date();
+    this.authDir = path.join(__dirname, 'auth', chipId);
+  }
+
+  async initialize() {
     try {
-      const data = JSON.parse(message);
+      console.log(`[${this.chipId}] Inicializando cliente WhatsApp...`);
       
-      if (data.type === 'subscribe' && data.chipId) {
-        // Registrar cliente para receber updates de um chip específico
-        if (!wsClients.has(data.chipId)) {
-          wsClients.set(data.chipId, new Set());
+      await fs.ensureDir(this.authDir);
+
+      this.client = new Client({
+        authStrategy: new LocalAuth({
+          clientId: this.chipId,
+          dataPath: this.authDir
+        }),
+        puppeteer: {
+          headless: true,
+          args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage'
+          ]
         }
-        wsClients.get(data.chipId).add(ws);
-        
-        ws.chipId = data.chipId;
-        ws.send(JSON.stringify({
-          type: 'subscribed',
-          chipId: data.chipId,
-          status: sessionsCache.get(`${data.chipId}_status`) || 'disconnected'
-        }));
-        
-        console.log(`Cliente inscrito para chip: ${data.chipId}`);
-      }
+      });
+
+      this.setupEventHandlers();
+      await this.client.initialize();
+      
     } catch (error) {
-      console.error('Erro ao processar mensagem WebSocket:', error);
+      console.error(`[${this.chipId}] Erro ao inicializar:`, error);
+      this.updateStatus('error');
+      throw error;
     }
-  });
-  
-  ws.on('close', () => {
-    // Remover cliente da lista quando desconectar
-    if (ws.chipId && wsClients.has(ws.chipId)) {
-      wsClients.get(ws.chipId).delete(ws);
-      if (wsClients.get(ws.chipId).size === 0) {
-        wsClients.delete(ws.chipId);
+  }
+
+  setupEventHandlers() {
+    this.client.on('qr', async (qr) => {
+      console.log(`[${this.chipId}] QR Code gerado`);
+      try {
+        this.qrCode = await QRCode.toDataURL(qr);
+        qrCodes.set(this.chipId, this.qrCode);
+        this.updateStatus('qr_ready');
+        
+        io.emit('qr_updated', { 
+          chipId: this.chipId, 
+          qrCode: this.qrCode,
+          status: 'qr_ready'
+        });
+
+      } catch (error) {
+        console.error(`[${this.chipId}] Erro ao gerar QR:`, error);
       }
+    });
+
+    this.client.on('ready', async () => {
+      console.log(`[${this.chipId}] Cliente pronto!`);
+      this.isReady = true;
+      this.qrCode = null;
+      qrCodes.delete(this.chipId);
+      this.updateStatus('connected');
+      
+      io.emit('status_updated', {
+        chipId: this.chipId,
+        status: 'connected',
+        phone: this.client.info?.wid?.user
+      });
+    });
+
+    this.client.on('disconnected', async (reason) => {
+      console.log(`[${this.chipId}] Desconectado:`, reason);
+      this.isReady = false;
+      this.updateStatus('disconnected');
+      
+      io.emit('status_updated', {
+        chipId: this.chipId,
+        status: 'disconnected',
+        reason
+      });
+
+      setTimeout(() => this.initialize(), 10000);
+    });
+
+    this.client.on('message', async (message) => {
+      try {
+        const messageData = {
+          id: message.id._serialized,
+          chipId: this.chipId,
+          from: message.from,
+          body: message.body,
+          timestamp: message.timestamp
+        };
+
+        console.log(`[${this.chipId}] Nova mensagem de ${message.from}: ${message.body}`);
+        io.emit('message_received', messageData);
+      } catch (error) {
+        console.error(`[${this.chipId}] Erro ao processar mensagem:`, error);
+      }
+    });
+  }
+
+  updateStatus(status) {
+    this.status = status;
+    this.lastSeen = new Date();
+    connectionStatus.set(this.chipId, {
+      status,
+      lastSeen: this.lastSeen,
+      isReady: this.isReady
+    });
+  }
+
+  async sendMessage(to, message) {
+    if (!this.isReady) {
+      throw new Error('Cliente não está pronto');
     }
-    console.log('Cliente WebSocket desconectado');
+    return await this.client.sendMessage(to, message);
+  }
+
+  async disconnect() {
+    if (this.client) {
+      await this.client.destroy();
+      this.client = null;
+    }
+    this.isReady = false;
+    this.updateStatus('disconnected');
+    sessions.delete(this.chipId);
+    qrCodes.delete(this.chipId);
+    connectionStatus.delete(this.chipId);
+  }
+}
+
+// API Routes
+app.get('/', (req, res) => {
+  res.json({
+    status: 'ok',
+    message: 'WhatsApp Server rodando',
+    activeSessions: sessions.size,
+    timestamp: new Date().toISOString()
   });
 });
 
-// Função para broadcast de status para clientes WebSocket
-function broadcastToChip(chipId, data) {
-  if (wsClients.has(chipId)) {
-    const clients = wsClients.get(chipId);
-    clients.forEach(client => {
-      if (client.readyState === WebSocket.OPEN) {
-        client.send(JSON.stringify(data));
-      }
-    });
-  }
-}
-
-// Webhook URL base para o frontend (configurável)
-const FRONTEND_WEBHOOK_URL = process.env.FRONTEND_WEBHOOK_URL || 'http://localhost:8080/api/webhooks/whatsapp';
-
-// Função para enviar webhook para o frontend
-async function sendWebhook(event, data) {
-  try {
-    const response = await fetch(FRONTEND_WEBHOOK_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        event,
-        data,
-        timestamp: new Date().toISOString()
-      })
-    });
-    
-    if (!response.ok) {
-      console.log('Webhook não disponível no frontend (normal em desenvolvimento)');
-    }
-  } catch (error) {
-    console.log('Frontend webhook não configurado (normal em desenvolvimento)');
-  }
-}
-
-// Função para criar conexão WhatsApp
-async function createWhatsAppConnection(chipId) {
-  try {
-    console.log(`Criando conexão para chip: ${chipId}`);
-    
-    // Estado de autenticação
-    const { state, saveCreds } = await useMultiFileAuthState(`./auth_sessions/${chipId}`);
-    
-    const sock = makeWASocket({
-      auth: state,
-      printQRInTerminal: false,
-      logger,
-      browser: ['WhatsApp Manager', 'Chrome', '1.0.0'],
-    });
-
-    // Eventos da conexão
-    sock.ev.on('connection.update', async (update) => {
-      const { connection, lastDisconnect, qr } = update;
-      
-      console.log(`Conexão ${chipId}:`, connection);
-      
-      if (qr) {
-        // Gerar QR Code
-        const qrCodeData = await QRCode.toDataURL(qr);
-        sessionsCache.set(`${chipId}_qr`, qrCodeData);
-        sessionsCache.set(`${chipId}_status`, 'qr_generated');
-        
-        // Broadcast para clientes WebSocket
-        broadcastToChip(chipId, {
-          type: 'qr_generated',
-          chipId,
-          qrCode: qrCodeData
-        });
-        
-        // Webhook para frontend
-        await sendWebhook('qr_generated', { chipId, qrCode: qrCodeData });
-        
-        console.log(`QR Code gerado para ${chipId}`);
-      }
-      
-      if (connection === 'close') {
-        const shouldReconnect = (lastDisconnect?.error)?.output?.statusCode !== DisconnectReason.loggedOut;
-        console.log('Conexão fechada, reconectando...', shouldReconnect);
-        
-        sessionsCache.set(`${chipId}_status`, 'disconnected');
-        activeSockets.delete(chipId);
-        
-        // Broadcast desconexão
-        broadcastToChip(chipId, {
-          type: 'disconnected',
-          chipId
-        });
-        
-        // Webhook para frontend
-        await sendWebhook('disconnected', { chipId });
-        
-        if (shouldReconnect) {
-          setTimeout(() => createWhatsAppConnection(chipId), 3000);
-        }
-      } else if (connection === 'open') {
-        console.log(`WhatsApp conectado para chip: ${chipId}`);
-        sessionsCache.set(`${chipId}_status`, 'connected');
-        activeSockets.set(chipId, sock);
-        
-        // Broadcast conexão
-        broadcastToChip(chipId, {
-          type: 'connected',
-          chipId
-        });
-        
-        // Webhook para frontend
-        await sendWebhook('connected', { chipId });
-      }
-    });
-
-    sock.ev.on('creds.update', saveCreds);
-    
-    // Listener para mensagens recebidas
-    sock.ev.on('messages.upsert', async (m) => {
-      const message = m.messages[0];
-      if (!message.key.fromMe && message.message) {
-        const messageData = {
-          chipId,
-          messageId: message.key.id,
-          from: message.key.remoteJid,
-          message: message.message.conversation || message.message.extendedTextMessage?.text || 'Mensagem não textual',
-          timestamp: new Date(message.messageTimestamp * 1000).toISOString(),
-          type: 'received'
-        };
-        
-        console.log(`Mensagem recebida no chip ${chipId}:`, messageData);
-        
-        // Broadcast para clientes WebSocket
-        broadcastToChip(chipId, {
-          type: 'message_received',
-          ...messageData
-        });
-        
-        // Webhook para frontend
-        await sendWebhook('message_received', messageData);
-      }
-    });
-    
-    return sock;
-  } catch (error) {
-    console.error(`Erro ao criar conexão ${chipId}:`, error);
-    sessionsCache.set(`${chipId}_status`, 'error');
-    throw error;
-  }
-}
-
-// Rotas da API
-
-// Iniciar conexão
 app.post('/whatsapp/connect', async (req, res) => {
   try {
     const { chipId } = req.body;
@@ -226,34 +189,36 @@ app.post('/whatsapp/connect', async (req, res) => {
       return res.status(400).json({ error: 'chipId é obrigatório' });
     }
 
-    console.log(`Iniciando conexão para chip: ${chipId}`);
-    
-    // Verificar se já existe conexão ativa
-    if (activeSockets.has(chipId)) {
-      return res.json({ 
-        success: true, 
-        message: 'Chip já conectado',
-        status: 'connected'
-      });
+    if (sessions.has(chipId)) {
+      const session = sessions.get(chipId);
+      if (session.isReady) {
+        return res.json({
+          success: true,
+          message: 'Chip já está conectado',
+          status: 'connected'
+        });
+      }
     }
 
-    // Criar nova conexão
-    await createWhatsAppConnection(chipId);
+    const manager = new WhatsAppManager(chipId);
+    sessions.set(chipId, manager);
     
-    res.json({ 
-      success: true, 
-      message: 'Conexão iniciada, aguarde o QR Code',
-      chipId,
-      status: 'connecting'
+    manager.initialize().catch(error => {
+      console.error(`Erro ao inicializar ${chipId}:`, error);
     });
 
+    res.json({
+      success: true,
+      message: 'Conexão iniciada',
+      status: 'connecting'
+    });
+    
   } catch (error) {
     console.error('Erro ao conectar:', error);
     res.status(500).json({ error: error.message });
   }
 });
 
-// Obter status e QR Code
 app.get('/whatsapp/status', (req, res) => {
   try {
     const { chipId } = req.query;
@@ -262,61 +227,82 @@ app.get('/whatsapp/status', (req, res) => {
       return res.status(400).json({ error: 'chipId é obrigatório' });
     }
 
-    const status = sessionsCache.get(`${chipId}_status`) || 'disconnected';
-    const qrCode = sessionsCache.get(`${chipId}_qr`);
-    
+    const session = sessions.get(chipId);
+    const qrCode = qrCodes.get(chipId);
+    const status = connectionStatus.get(chipId) || { status: 'disconnected', isReady: false };
+
     res.json({
       success: true,
       chipId,
-      status,
-      qrCode: status === 'qr_generated' ? qrCode : null
+      status: status.status,
+      isReady: status.isReady,
+      qrCode: qrCode || null
     });
-
+    
   } catch (error) {
     console.error('Erro ao obter status:', error);
     res.status(500).json({ error: error.message });
   }
 });
 
-// Enviar mensagem
+app.get('/whatsapp/connections', (req, res) => {
+  try {
+    const connections = Array.from(sessions.keys()).map(chipId => {
+      const session = sessions.get(chipId);
+      const qrCode = qrCodes.get(chipId);
+      const status = connectionStatus.get(chipId) || { status: 'disconnected', isReady: false };
+      
+      return {
+        chipId,
+        status: status.status,
+        isReady: status.isReady,
+        hasQrCode: !!qrCode
+      };
+    });
+
+    res.json({
+      success: true,
+      connections,
+      total: connections.length
+    });
+    
+  } catch (error) {
+    console.error('Erro ao listar conexões:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.post('/whatsapp/send-message', async (req, res) => {
   try {
-    const { chipId, phone, message } = req.body;
+    const { chipId, to, message } = req.body;
     
-    if (!chipId || !phone || !message) {
-      return res.status(400).json({ error: 'chipId, phone e message são obrigatórios' });
+    if (!chipId || !to || !message) {
+      return res.status(400).json({ 
+        error: 'chipId, to e message são obrigatórios' 
+      });
     }
 
-    const sock = activeSockets.get(chipId);
-    
-    if (!sock) {
-      return res.status(400).json({ error: 'Chip não conectado' });
+    const session = sessions.get(chipId);
+    if (!session || !session.isReady) {
+      return res.status(400).json({ 
+        error: 'Chip não está conectado' 
+      });
     }
 
-    // Formatar número
-    const formattedPhone = phone.includes('@') ? phone : `${phone}@s.whatsapp.net`;
-    
-    // Enviar mensagem
-    await sock.sendMessage(formattedPhone, { text: message });
-    
-    console.log(`Mensagem enviada para ${phone} via chip ${chipId}`);
+    const sentMessage = await session.sendMessage(to, message);
     
     res.json({
       success: true,
-      message: 'Mensagem enviada com sucesso',
-      chipId,
-      phone,
-      sentMessage: message
+      message: 'Mensagem enviada'
     });
-
+    
   } catch (error) {
     console.error('Erro ao enviar mensagem:', error);
     res.status(500).json({ error: error.message });
   }
 });
 
-// Desconectar chip
-app.post('/whatsapp/disconnect', (req, res) => {
+app.post('/whatsapp/disconnect', async (req, res) => {
   try {
     const { chipId } = req.body;
     
@@ -324,94 +310,45 @@ app.post('/whatsapp/disconnect', (req, res) => {
       return res.status(400).json({ error: 'chipId é obrigatório' });
     }
 
-    const sock = activeSockets.get(chipId);
-    
-    if (sock) {
-      sock.logout();
-      activeSockets.delete(chipId);
+    const session = sessions.get(chipId);
+    if (session) {
+      await session.disconnect();
     }
 
-    sessionsCache.del(`${chipId}_status`);
-    sessionsCache.del(`${chipId}_qr`);
-    
     res.json({
       success: true,
-      message: 'Chip desconectado',
-      chipId
+      message: 'Chip desconectado'
     });
-
+    
   } catch (error) {
     console.error('Erro ao desconectar:', error);
     res.status(500).json({ error: error.message });
   }
 });
 
-// Status geral do servidor
-app.get('/health', (req, res) => {
-  res.json({
-    success: true,
-    message: 'Servidor WhatsApp funcionando',
-    activeConnections: activeSockets.size,
-    timestamp: new Date().toISOString()
-  });
-});
-
-// Nova rota para listar todas as conexões ativas
-app.get('/whatsapp/connections', (req, res) => {
-  try {
-    const connections = Array.from(activeSockets.keys()).map(chipId => ({
-      chipId,
-      status: sessionsCache.get(`${chipId}_status`) || 'disconnected',
-      hasQrCode: !!sessionsCache.get(`${chipId}_qr`)
-    }));
-    
-    res.json({
-      success: true,
-      connections,
-      total: connections.length
-    });
-  } catch (error) {
-    console.error('Erro ao listar conexões:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// WebSocket status endpoint
-app.get('/whatsapp/ws-status', (req, res) => {
-  const wsStats = {};
-  wsClients.forEach((clients, chipId) => {
-    wsStats[chipId] = clients.size;
-  });
+// WebSocket para atualizações em tempo real
+io.on('connection', (socket) => {
+  console.log('Cliente WebSocket conectado:', socket.id);
   
-  res.json({
-    success: true,
-    connectedClients: Object.keys(wsStats).length,
-    clientsByChip: wsStats
+  socket.on('disconnect', () => {
+    console.log('Cliente WebSocket desconectado:', socket.id);
   });
 });
 
-server.listen(port, () => {
-  console.log(`🚀 Servidor WhatsApp rodando na porta ${port}`);
-  console.log(`📱 API disponível em: http://localhost:${port}`);
-  console.log(`🔌 WebSocket disponível em: ws://localhost:${port}`);
-  console.log(`💡 Teste com: http://localhost:${port}/health`);
+// Iniciar servidor
+server.listen(PORT, () => {
+  console.log(`🚀 WhatsApp Server rodando na porta ${PORT}`);
+  console.log(`📱 WebSocket disponível para atualizações em tempo real`);
 });
 
 // Graceful shutdown
-process.on('SIGINT', () => {
-  console.log('Fechando servidor...');
+process.on('SIGINT', async () => {
+  console.log('Encerrando servidor...');
   
-  // Fechar WebSocket server
-  wss.close();
+  for (const [chipId, session] of sessions.entries()) {
+    console.log(`Desconectando ${chipId}...`);
+    await session.disconnect();
+  }
   
-  // Desconectar todos os sockets
-  activeSockets.forEach((sock, chipId) => {
-    console.log(`Desconectando chip: ${chipId}`);
-    sock.end();
-  });
-  
-  server.close(() => {
-    console.log('Servidor fechado');
-    process.exit(0);
-  });
+  process.exit(0);
 });

@@ -7,10 +7,13 @@ import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { QRCodeSVG } from 'qrcode.react';
-import { Plus, Smartphone, Wifi, WifiOff, Download, Trash2, RotateCcw, Settings } from 'lucide-react';
+import { Plus, Smartphone, Wifi, WifiOff, Download, Trash2, RotateCcw, Settings, Eye } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
+import { useMultipleChips } from '@/hooks/useMultipleChips';
+import { useWhatsAppRealTime } from '@/hooks/useWhatsAppRealTime';
+import { ChipStatusIndicator } from '@/components/ChipStatusIndicator';
 
 interface Chip {
   id: string;
@@ -31,8 +34,22 @@ export default function Chips() {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [generatingQR, setGeneratingQR] = useState<string | null>(null);
+  const [selectedChipQR, setSelectedChipQR] = useState<string | null>(null);
+  const [qrDialogOpen, setQrDialogOpen] = useState(false);
   const { toast } = useToast();
   const { user } = useAuth();
+  
+  // Hooks para conexões reais
+  const { 
+    connections, 
+    connectChip, 
+    disconnectChip, 
+    getQrCode, 
+    sendMessage,
+    getChipStatus 
+  } = useMultipleChips();
+  
+  const { connected: wsConnected, connectionStatuses } = useWhatsAppRealTime();
 
   useEffect(() => {
     fetchChips();
@@ -61,28 +78,59 @@ export default function Chips() {
   const generateQRCode = async (chipId: string) => {
     setGeneratingQR(chipId);
     try {
-      const qrData = `whatsapp-chip:${chipId}:${Date.now()}:${Math.random().toString(36).substr(2, 9)}`;
-      
-      const { error } = await supabase
-        .from('chips')
-        .update({ qr_code: qrData, status: 'connecting' })
-        .eq('id', chipId);
-
-      if (error) throw error;
+      // Conectar via servidor real
+      await connectChip(chipId);
       
       toast({
         title: 'Sucesso',
-        description: 'QR Code gerado! Escaneie com WhatsApp para conectar.',
+        description: 'Conexão iniciada! Aguarde o QR Code.',
       });
-      fetchChips();
     } catch (error: any) {
       toast({
         title: 'Erro',
-        description: 'Erro ao gerar QR Code: ' + error.message,
+        description: 'Erro ao iniciar conexão: ' + error.message,
         variant: 'destructive',
       });
     } finally {
       setGeneratingQR(null);
+    }
+  };
+
+  const viewQRCode = async (chipId: string) => {
+    try {
+      const qrCode = await getQrCode(chipId);
+      if (qrCode) {
+        setSelectedChipQR(qrCode);
+        setQrDialogOpen(true);
+      } else {
+        toast({
+          title: 'QR Code não disponível',
+          description: 'Inicie a conexão primeiro para gerar o QR Code.',
+          variant: 'destructive',
+        });
+      }
+    } catch (error: any) {
+      toast({
+        title: 'Erro',
+        description: 'Erro ao obter QR Code: ' + error.message,
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const handleDisconnect = async (chipId: string) => {
+    try {
+      await disconnectChip(chipId);
+      toast({
+        title: 'Sucesso',
+        description: 'Chip desconectado com sucesso.',
+      });
+    } catch (error: any) {
+      toast({
+        title: 'Erro',
+        description: 'Erro ao desconectar chip: ' + error.message,
+        variant: 'destructive',
+      });
     }
   };
 
@@ -123,6 +171,19 @@ export default function Chips() {
         variant: 'destructive',
       });
     }
+  };
+
+  // Combinar dados do Supabase com status real das conexões
+  const getChipWithRealStatus = (chip: Chip) => {
+    const realConnection = connections.find(conn => conn.chipId === chip.id);
+    const wsStatus = connectionStatuses.find(status => status.chipId === chip.id);
+    
+    return {
+      ...chip,
+      realStatus: realConnection?.status || wsStatus?.status || 'disconnected',
+      isReady: realConnection?.isReady || wsStatus?.isReady || false,
+      hasQrCode: realConnection?.hasQrCode || false
+    };
   };
 
   const getStatusColor = (status: string) => {
@@ -220,62 +281,145 @@ export default function Chips() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {filteredChips.map((chip) => (
-          <Card key={chip.id} className="hover:shadow-lg transition-shadow">
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle className="flex items-center gap-2">
-                  <Smartphone className="h-5 w-5" />
-                  {chip.name}
-                </CardTitle>
-                {getStatusIcon(chip.status)}
-              </div>
-              <Badge className={`w-fit ${getStatusColor(chip.status)}`}>
-                {chip.status === 'active' ? 'Ativo' : chip.status === 'inactive' ? 'Inativo' : chip.status === 'connecting' ? 'Conectando' : 'Erro'}
-              </Badge>
-            </CardHeader>
-            
-            <CardContent className="space-y-4">
-              <div>
-                <p className="text-sm text-muted-foreground">Telefone: {chip.phone_number}</p>
-                <p className="text-xs text-muted-foreground">Criado: {new Date(chip.created_at).toLocaleDateString('pt-BR')}</p>
-              </div>
+        {filteredChips.map((chip) => {
+          const chipWithRealStatus = getChipWithRealStatus(chip);
+          
+          return (
+            <Card key={chip.id} className="hover:shadow-lg transition-shadow">
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="flex items-center gap-2">
+                    <Smartphone className="h-5 w-5" />
+                    {chip.name}
+                  </CardTitle>
+                  <div className="flex items-center gap-2">
+                    <ChipStatusIndicator 
+                      status={chipWithRealStatus.realStatus} 
+                      isReady={chipWithRealStatus.isReady}
+                      size="sm"
+                    />
+                    {!wsConnected && (
+                      <Badge variant="outline" className="text-xs">
+                        Offline
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+              </CardHeader>
+              
+              <CardContent className="space-y-4">
+                <div>
+                  <p className="text-sm text-muted-foreground">Telefone: {chip.phone_number}</p>
+                  <p className="text-xs text-muted-foreground">Criado: {new Date(chip.created_at).toLocaleDateString('pt-BR')}</p>
+                  <p className="text-xs text-muted-foreground">Status Real: {chipWithRealStatus.realStatus}</p>
+                </div>
 
-              {chip.qr_code ? (
-                <div className="border rounded-lg p-4 bg-muted/20">
-                  <div className="flex flex-col items-center space-y-3">
-                    <div className="bg-white p-3 rounded-lg">
-                      <QRCodeSVG value={chip.qr_code} size={120} />
-                    </div>
+                {/* Botões de ação */}
+                <div className="flex flex-wrap gap-2">
+                  {chipWithRealStatus.realStatus === 'disconnected' && (
                     <Button 
-                      variant="outline" 
                       size="sm" 
                       onClick={() => generateQRCode(chip.id)}
                       disabled={generatingQR === chip.id}
                     >
-                      <RotateCcw className={`h-3 w-3 mr-1 ${generatingQR === chip.id ? 'animate-spin' : ''}`} />
-                      Renovar QR
+                      {generatingQR === chip.id ? 'Conectando...' : 'Conectar'}
                     </Button>
-                  </div>
-                </div>
-              ) : (
-                <div className="border rounded-lg p-4 bg-muted/20 text-center">
-                  <Smartphone className="h-12 w-12 text-muted-foreground mx-auto mb-2" />
-                  <p className="text-sm font-medium">QR Code não gerado</p>
+                  )}
+                  
+                  {chipWithRealStatus.hasQrCode && chipWithRealStatus.realStatus === 'qr_ready' && (
+                    <Button 
+                      size="sm" 
+                      variant="outline"
+                      onClick={() => viewQRCode(chip.id)}
+                    >
+                      <Eye className="h-3 w-3 mr-1" />
+                      Ver QR
+                    </Button>
+                  )}
+                  
+                  {chipWithRealStatus.realStatus === 'connected' && (
+                    <Button 
+                      size="sm" 
+                      variant="destructive"
+                      onClick={() => handleDisconnect(chip.id)}
+                    >
+                      Desconectar
+                    </Button>
+                  )}
+                  
                   <Button 
                     size="sm" 
+                    variant="outline"
                     onClick={() => generateQRCode(chip.id)}
                     disabled={generatingQR === chip.id}
-                    className="mt-2"
                   >
-                    {generatingQR === chip.id ? 'Gerando...' : 'Gerar QR Code'}
+                    <RotateCcw className={`h-3 w-3 mr-1 ${generatingQR === chip.id ? 'animate-spin' : ''}`} />
+                    Renovar
                   </Button>
                 </div>
-              )}
-            </CardContent>
-          </Card>
-        ))}
+
+                {/* Status da conexão real */}
+                {wsConnected && chipWithRealStatus.realStatus === 'qr_ready' && (
+                  <div className="border rounded-lg p-3 bg-blue-50 border-blue-200">
+                    <p className="text-sm text-blue-800 text-center">
+                      📱 QR Code disponível! Clique em "Ver QR" para escanear.
+                    </p>
+                  </div>
+                )}
+
+                {chipWithRealStatus.realStatus === 'connected' && (
+                  <div className="border rounded-lg p-3 bg-green-50 border-green-200">
+                    <p className="text-sm text-green-800 text-center">
+                      ✅ Chip conectado e pronto para uso!
+                    </p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          );
+        })}
       </div>
+
+      {/* Dialog para exibir QR Code */}
+      <Dialog open={qrDialogOpen} onOpenChange={setQrDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Escanear QR Code</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col items-center space-y-4">
+            {selectedChipQR && (
+              <div className="bg-white p-4 rounded-lg border">
+                <img 
+                  src={selectedChipQR} 
+                  alt="QR Code WhatsApp" 
+                  className="w-64 h-64"
+                />
+              </div>
+            )}
+            <div className="text-center">
+              <p className="text-sm text-muted-foreground">
+                1. Abra o WhatsApp no seu telefone
+              </p>
+              <p className="text-sm text-muted-foreground">
+                2. Toque em Mais opções → Aparelhos conectados
+              </p>
+              <p className="text-sm text-muted-foreground">
+                3. Toque em "Conectar um aparelho"
+              </p>
+              <p className="text-sm text-muted-foreground">
+                4. Escaneie este código QR
+              </p>
+            </div>
+            <Button 
+              variant="outline" 
+              onClick={() => setQrDialogOpen(false)}
+              className="w-full"
+            >
+              Fechar
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

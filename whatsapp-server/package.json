@@ -1,22 +1,32 @@
 {
-  "name": "whatsapp-baileys-server",
+  "name": "whatsapp-server",
   "version": "1.0.0",
-  "description": "Servidor WhatsApp com Baileys para integração",
+  "description": "WhatsApp Web Server with multiple chip support",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
     "dev": "nodemon server.js"
   },
   "dependencies": {
-    "@whiskeysockets/baileys": "^6.6.0",
+    "whatsapp-web.js": "^1.23.0",
     "express": "^4.18.2",
     "cors": "^2.8.5",
     "qrcode": "^1.5.3",
-    "pino": "^8.17.2",
-    "ws": "^8.16.0",
-    "node-cache": "^5.1.2"
+    "socket.io": "^4.7.5",
+    "multer": "^1.4.5-lts.1",
+    "axios": "^1.6.2",
+    "node-cron": "^3.0.3",
+    "fs-extra": "^11.2.0"
   },
   "devDependencies": {
     "nodemon": "^3.0.2"
-  }
+  },
+  "keywords": [
+    "whatsapp",
+    "api",
+    "bot",
+    "multiple-sessions"
+  ],
+  "author": "WhatsApp Manager",
+  "license": "MIT"
 }
