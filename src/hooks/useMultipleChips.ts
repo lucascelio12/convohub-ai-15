@@ -14,47 +14,60 @@ export function useMultipleChips() {
   const [connections, setConnections] = useState<ChipConnection[]>([]);
   const [loading, setLoading] = useState(false);
   const [socket, setSocket] = useState<Socket | null>(null);
+  const [serverAvailable, setServerAvailable] = useState(false);
 
-  // Conectar ao WebSocket para atualizações em tempo real
+  // URL do servidor WhatsApp (configurável)
+  const WHATSAPP_SERVER_URL = process.env.VITE_WHATSAPP_SERVER_URL || 'http://localhost:3001';
+
+  // Conectar ao WebSocket para atualizações em tempo real (apenas se servidor disponível)
   useEffect(() => {
-    const socketConnection = io('http://localhost:3001');
-    setSocket(socketConnection);
+    // Primeiro verificar se o servidor está disponível
+    fetch(`${WHATSAPP_SERVER_URL}/health`)
+      .then(() => {
+        setServerAvailable(true);
+        const socketConnection = io(WHATSAPP_SERVER_URL);
+        setSocket(socketConnection);
 
-    // Ouvir atualizações de status
-    socketConnection.on('status_updated', (data) => {
-      console.log('Status atualizado:', data);
-      updateConnectionStatus(data.chipId, data.status, data.status === 'connected');
-    });
+        // Ouvir atualizações de status
+        socketConnection.on('status_updated', (data) => {
+          console.log('Status atualizado:', data);
+          updateConnectionStatus(data.chipId, data.status, data.status === 'connected');
+        });
 
-    // Ouvir atualizações de QR Code
-    socketConnection.on('qr_updated', (data) => {
-      console.log('QR Code atualizado:', data);
-      updateConnectionStatus(data.chipId, data.status, false, true);
-    });
+        // Ouvir atualizações de QR Code
+        socketConnection.on('qr_updated', (data) => {
+          console.log('QR Code atualizado:', data);
+          updateConnectionStatus(data.chipId, data.status, false, true);
+        });
 
-    // Ouvir mensagens recebidas
-    socketConnection.on('message_received', (data) => {
-      console.log('Mensagem recebida:', data);
-      // Aqui você pode adicionar lógica adicional para processar mensagens
-    });
+        // Ouvir mensagens recebidas
+        socketConnection.on('message_received', (data) => {
+          console.log('Mensagem recebida:', data);
+          // Aqui você pode adicionar lógica adicional para processar mensagens
+        });
 
-    // Ouvir status inicial das conexões
-    socketConnection.on('connections_status', (data) => {
-      console.log('Status das conexões:', data);
-      const mappedConnections = data.connections.map((conn: any) => ({
-        chipId: conn.chipId,
-        status: conn.status,
-        hasQrCode: conn.status === 'qr_ready',
-        isReady: conn.isReady,
-        lastSeen: conn.lastSeen
-      }));
-      setConnections(mappedConnections);
-    });
+        // Ouvir status inicial das conexões
+        socketConnection.on('connections_status', (data) => {
+          console.log('Status das conexões:', data);
+          const mappedConnections = data.connections.map((conn: any) => ({
+            chipId: conn.chipId,
+            status: conn.status,
+            hasQrCode: conn.status === 'qr_ready',
+            isReady: conn.isReady,
+            lastSeen: conn.lastSeen
+          }));
+          setConnections(mappedConnections);
+        });
 
-    return () => {
-      socketConnection.disconnect();
-    };
-  }, []);
+        return () => {
+          socketConnection.disconnect();
+        };
+      })
+      .catch(() => {
+        setServerAvailable(false);
+        console.log('Servidor WhatsApp não disponível em:', WHATSAPP_SERVER_URL);
+      });
+  }, [WHATSAPP_SERVER_URL]);
 
   // Atualizar status de uma conexão específica
   const updateConnectionStatus = useCallback((chipId: string, status: string, isReady: boolean = false, hasQrCode: boolean = false) => {
@@ -80,9 +93,14 @@ export function useMultipleChips() {
 
   // Fetch status de todas as conexões
   const fetchAllConnections = async () => {
+    if (!serverAvailable) {
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     try {
-      const response = await fetch('http://localhost:3001/whatsapp/connections');
+      const response = await fetch(`${WHATSAPP_SERVER_URL}/whatsapp/connections`);
       
       if (response.ok) {
         const data = await response.json();
@@ -101,6 +119,7 @@ export function useMultipleChips() {
     } catch (error) {
       console.log('Erro ao buscar conexões:', error);
       setConnections([]);
+      setServerAvailable(false);
     } finally {
       setLoading(false);
     }
@@ -136,8 +155,10 @@ export function useMultipleChips() {
 
   // Desconectar um chip específico
   const disconnectChip = async (chipId: string) => {
+    if (!serverAvailable) return;
+    
     try {
-      const response = await fetch('http://localhost:3001/whatsapp/disconnect', {
+      const response = await fetch(`${WHATSAPP_SERVER_URL}/whatsapp/disconnect`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ chipId })
@@ -159,8 +180,10 @@ export function useMultipleChips() {
 
   // Obter QR Code de um chip específico
   const getQrCode = async (chipId: string): Promise<string | null> => {
+    if (!serverAvailable) return null;
+    
     try {
-      const response = await fetch(`http://localhost:3001/whatsapp/status?chipId=${chipId}`);
+      const response = await fetch(`${WHATSAPP_SERVER_URL}/whatsapp/status?chipId=${chipId}`);
       if (response.ok) {
         const data = await response.json();
         return data.qrCode || null;
@@ -210,18 +233,21 @@ export function useMultipleChips() {
   };
 
   useEffect(() => {
-    fetchAllConnections();
-    
-    // Polling para atualizar status periodicamente
-    const interval = setInterval(fetchAllConnections, 30000); // 30 segundos
-    
-    return () => clearInterval(interval);
-  }, []);
+    if (serverAvailable) {
+      fetchAllConnections();
+      
+      // Polling para atualizar status periodicamente (apenas se servidor disponível)
+      const interval = setInterval(fetchAllConnections, 30000); // 30 segundos
+      
+      return () => clearInterval(interval);
+    }
+  }, [serverAvailable]);
 
   return {
     connections,
     loading,
     socket,
+    serverAvailable,
     connectChip,
     disconnectChip,
     getQrCode,
