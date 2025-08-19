@@ -16,10 +16,11 @@ interface Chip {
   id: string;
   name: string;
   phone_number: string;
-  status: 'active' | 'inactive' | 'connecting' | 'error';
+  status: string;
   qr_code?: string;
   created_at: string;
   updated_at: string;
+  created_by?: string;
 }
 
 export default function Chips() {
