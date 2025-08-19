@@ -18,9 +18,18 @@ interface User {
   name: string;
   email: string;
   role: string;
+  company_id?: string;
   avatar_url?: string;
   created_at: string;
   updated_at: string;
+  company?: {
+    name: string;
+  };
+}
+
+interface Company {
+  id: string;
+  name: string;
 }
 
 interface Queue {
@@ -45,6 +54,7 @@ interface UserPermission {
 export default function Users() {
   const { user: currentUser, profile } = useAuth();
   const [users, setUsers] = useState<User[]>([]);
+  const [companies, setCompanies] = useState<Company[]>([]);
   const [queues, setQueues] = useState<Queue[]>([]);
   const [chips, setChips] = useState<Chip[]>([]);
   const [permissions, setPermissions] = useState<UserPermission[]>([]);
@@ -56,6 +66,7 @@ export default function Users() {
     email: '',
     role: 'user',
     password: '',
+    company_id: '',
     selectedQueues: [] as string[],
     selectedChips: [] as string[],
     conversationAccess: 'own' as 'own' | 'all'
@@ -73,13 +84,24 @@ export default function Users() {
     try {
       setLoading(true);
       
-      // Fetch users
+      // Fetch users with company info
       const { data: usersData, error: usersError } = await supabase
         .from('profiles')
-        .select('*')
+        .select(`
+          *,
+          company:companies(name)
+        `)
         .order('created_at', { ascending: false });
 
       if (usersError) throw usersError;
+
+      // Fetch companies
+      const { data: companiesData, error: companiesError } = await supabase
+        .from('companies')
+        .select('id, name')
+        .eq('active', true);
+
+      if (companiesError) throw companiesError;
 
       // Fetch queues
       const { data: queuesData, error: queuesError } = await supabase
@@ -105,6 +127,7 @@ export default function Users() {
       if (permissionsError) throw permissionsError;
 
       setUsers(usersData || []);
+      setCompanies(companiesData || []);
       setQueues(queuesData || []);
       setChips(chipsData || []);
       setPermissions(permissionsData || []);
@@ -125,7 +148,8 @@ export default function Users() {
         options: {
           data: {
             name: formData.name,
-            role: formData.role
+            role: formData.role,
+            company_id: formData.company_id
           },
           emailRedirectTo: `${window.location.origin}/`
         }
@@ -199,6 +223,7 @@ export default function Users() {
       email: '',
       role: 'user',
       password: '',
+      company_id: '',
       selectedQueues: [],
       selectedChips: [],
       conversationAccess: 'own'
@@ -295,6 +320,22 @@ export default function Users() {
                     placeholder="email@exemplo.com"
                   />
                 </div>
+              </div>
+
+              <div>
+                <Label htmlFor="company">Empresa</Label>
+                <Select value={formData.company_id} onValueChange={(value) => setFormData({ ...formData, company_id: value })}>
+                  <SelectTrigger className="mt-2">
+                    <SelectValue placeholder="Selecione uma empresa" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {companies.map((company) => (
+                      <SelectItem key={company.id} value={company.id}>
+                        {company.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
@@ -421,7 +462,10 @@ export default function Users() {
                     </div>
                     <div>
                       <CardTitle className="text-lg">{user.name}</CardTitle>
-                      <CardDescription>{user.email}</CardDescription>
+                      <CardDescription>
+                        {user.email}
+                        {user.company && <span className="block text-xs text-muted-foreground mt-1">{user.company.name}</span>}
+                      </CardDescription>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">

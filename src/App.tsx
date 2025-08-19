@@ -11,6 +11,7 @@ import Queues from "./pages/Queues";
 import Chips from "./pages/Chips";
 import Campaigns from "./pages/Campaigns";
 import Users from "./pages/Users";
+import Companies from "./pages/Companies";
 import Reports from "./pages/Reports";
 import AdvancedReports from "./pages/AdvancedReports";
 import Settings from "./pages/Settings";
@@ -37,6 +38,7 @@ const App = () => (
               <Route path="chips" element={<Chips />} />
               <Route path="campaigns" element={<Campaigns />} />
               <Route path="users" element={<Users />} />
+              <Route path="companies" element={<Companies />} />
               <Route path="reports" element={<Reports />} />
               <Route path="advanced-reports" element={<AdvancedReports />} />
               <Route path="settings" element={<Settings />} />

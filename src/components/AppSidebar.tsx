@@ -3,6 +3,7 @@ import {
   MessageSquare, 
   Send, 
   Users, 
+  Building2,
   Layers, 
   Smartphone, 
   BarChart3, 
@@ -35,6 +36,11 @@ const menuItems = [
   { title: "Relatórios", url: "/reports", icon: BarChart3 },
   { title: "Relatórios Avançados", url: "/advanced-reports", icon: TrendingUp },
   { title: "Configurações", url: "/settings", icon: Settings },
+];
+
+const adminItems = [
+  { title: "Usuários", url: "/users", icon: Users },
+  { title: "Empresas", url: "/companies", icon: Building2 },
 ];
 
 export function AppSidebar() {
@@ -104,6 +110,26 @@ export function AppSidebar() {
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
+
+        {profile?.role === 'admin' && (
+          <SidebarGroup>
+            <SidebarGroupLabel>Administração</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {adminItems.map((item) => (
+                  <SidebarMenuItem key={item.title}>
+                    <SidebarMenuButton asChild>
+                      <NavLink to={item.url} className={getNavCls}>
+                        <item.icon className="h-4 w-4" />
+                        {!collapsed && <span>{item.title}</span>}
+                      </NavLink>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
       </SidebarContent>
 
       <SidebarFooter className="border-t border-sidebar-border p-4">
