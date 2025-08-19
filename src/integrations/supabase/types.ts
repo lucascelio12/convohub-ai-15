@@ -57,6 +57,7 @@ export type Database = {
       }
       campaigns: {
         Row: {
+          company_id: string | null
           created_at: string
           created_by: string
           id: string
@@ -69,6 +70,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          company_id?: string | null
           created_at?: string
           created_by: string
           id?: string
@@ -81,6 +83,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          company_id?: string | null
           created_at?: string
           created_by?: string
           id?: string
@@ -92,10 +95,19 @@ export type Database = {
           total_contacts?: number | null
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "campaigns_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       chips: {
         Row: {
+          company_id: string | null
           created_at: string
           created_by: string
           id: string
@@ -106,6 +118,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          company_id?: string | null
           created_at?: string
           created_by: string
           id?: string
@@ -116,6 +129,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          company_id?: string | null
           created_at?: string
           created_by?: string
           id?: string
@@ -125,12 +139,87 @@ export type Database = {
           status?: string
           updated_at?: string
         }
+        Relationships: [
+          {
+            foreignKeyName: "chips_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      companies: {
+        Row: {
+          active: boolean | null
+          address: string | null
+          city: string | null
+          country: string | null
+          created_at: string
+          created_by: string
+          domain: string | null
+          email: string | null
+          id: string
+          logo_url: string | null
+          max_chips: number | null
+          max_queues: number | null
+          max_users: number | null
+          name: string
+          phone: string | null
+          slug: string
+          state: string | null
+          subscription_plan: string | null
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean | null
+          address?: string | null
+          city?: string | null
+          country?: string | null
+          created_at?: string
+          created_by: string
+          domain?: string | null
+          email?: string | null
+          id?: string
+          logo_url?: string | null
+          max_chips?: number | null
+          max_queues?: number | null
+          max_users?: number | null
+          name: string
+          phone?: string | null
+          slug: string
+          state?: string | null
+          subscription_plan?: string | null
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean | null
+          address?: string | null
+          city?: string | null
+          country?: string | null
+          created_at?: string
+          created_by?: string
+          domain?: string | null
+          email?: string | null
+          id?: string
+          logo_url?: string | null
+          max_chips?: number | null
+          max_queues?: number | null
+          max_users?: number | null
+          name?: string
+          phone?: string | null
+          slug?: string
+          state?: string | null
+          subscription_plan?: string | null
+          updated_at?: string
+        }
         Relationships: []
       }
       conversations: {
         Row: {
           assigned_to: string | null
           chip_id: string | null
+          company_id: string | null
           contact_name: string | null
           conversation_type: string | null
           created_at: string
@@ -145,6 +234,7 @@ export type Database = {
         Insert: {
           assigned_to?: string | null
           chip_id?: string | null
+          company_id?: string | null
           contact_name?: string | null
           conversation_type?: string | null
           created_at?: string
@@ -159,6 +249,7 @@ export type Database = {
         Update: {
           assigned_to?: string | null
           chip_id?: string | null
+          company_id?: string | null
           contact_name?: string | null
           conversation_type?: string | null
           created_at?: string
@@ -176,6 +267,13 @@ export type Database = {
             columns: ["chip_id"]
             isOneToOne: false
             referencedRelation: "chips"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conversations_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
             referencedColumns: ["id"]
           },
           {
@@ -228,6 +326,7 @@ export type Database = {
       profiles: {
         Row: {
           avatar_url: string | null
+          company_id: string | null
           created_at: string
           email: string
           id: string
@@ -238,6 +337,7 @@ export type Database = {
         }
         Insert: {
           avatar_url?: string | null
+          company_id?: string | null
           created_at?: string
           email: string
           id?: string
@@ -248,6 +348,7 @@ export type Database = {
         }
         Update: {
           avatar_url?: string | null
+          company_id?: string | null
           created_at?: string
           email?: string
           id?: string
@@ -256,7 +357,15 @@ export type Database = {
           updated_at?: string
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "profiles_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       queue_managers: {
         Row: {
@@ -291,6 +400,7 @@ export type Database = {
         Row: {
           active: boolean
           color: string | null
+          company_id: string | null
           created_at: string
           created_by: string
           description: string | null
@@ -301,6 +411,7 @@ export type Database = {
         Insert: {
           active?: boolean
           color?: string | null
+          company_id?: string | null
           created_at?: string
           created_by: string
           description?: string | null
@@ -311,6 +422,7 @@ export type Database = {
         Update: {
           active?: boolean
           color?: string | null
+          company_id?: string | null
           created_at?: string
           created_by?: string
           description?: string | null
@@ -318,7 +430,15 @@ export type Database = {
           name?: string
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "queues_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       user_permissions: {
         Row: {
