@@ -73,13 +73,15 @@ export function AppSidebar() {
       return ['conversations', 'reports'].some(allowed => item.url.includes(allowed));
     }
     
-    // User padrão tem acesso a funcionalidades básicas
-    if (profile.role === 'user') {
-      return ['conversations', 'queues', 'chips', 'campaigns', 'reports'].some(allowed => item.url.includes(allowed));
+    // User padrão tem acesso a funcionalidades básicas + usuários e empresas
+    if ((profile as any).role === 'user') {
+      return ['conversations', 'queues', 'chips', 'campaigns', 'reports', 'users', 'companies'].some(allowed => item.url.includes(allowed));
     }
     
     return false;
   };
+
+  const showAdminSection = profile && (profile.role === 'admin' || (profile as any).role === 'user');
 
   return (
     <Sidebar className={collapsed ? "w-14" : "w-64"}>
@@ -111,12 +113,12 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
 
-        {profile?.role === 'admin' && (
+        {showAdminSection && (
           <SidebarGroup>
             <SidebarGroupLabel>Administração</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
-                {adminItems.map((item) => (
+                {adminItems.filter(canAccess).map((item) => (
                   <SidebarMenuItem key={item.title}>
                     <SidebarMenuButton asChild>
                       <NavLink to={item.url} className={getNavCls}>
