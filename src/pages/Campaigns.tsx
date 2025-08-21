@@ -9,7 +9,8 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
-import { Plus, Send, Users, MessageSquare, MoreVertical, Play, Pause, Edit, Trash2, Upload, FileText } from 'lucide-react';
+import { Plus, Send, Users, MessageSquare, MoreVertical, Play, Pause, Edit, Trash2, Upload, FileText, FileSpreadsheet } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
@@ -41,6 +42,8 @@ export default function Campaigns() {
     message_template: ''
   });
   const [importData, setImportData] = useState('');
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importMethod, setImportMethod] = useState<'text' | 'file'>('text');
   const { user } = useAuth();
   const { toast } = useToast();
 
@@ -176,8 +179,53 @@ export default function Campaigns() {
     setImportDialogOpen(true);
   };
 
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setImportFile(file);
+
+    // Process Excel file
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      try {
+        const data = new Uint8Array(e.target?.result as ArrayBuffer);
+        const workbook = XLSX.read(data, { type: 'array' });
+        const sheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[sheetName];
+        
+        // Convert to JSON
+        const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as string[][];
+        
+        // Convert to text format for processing
+        const textData = jsonData.map(row => {
+          // Ensure we have at least name and phone
+          if (row.length >= 2) {
+            return row.slice(0, 3).join(', '); // Name, Phone, Message (optional)
+          }
+          return '';
+        }).filter(line => line.trim() !== '').join('\n');
+        
+        setImportData(textData);
+        
+        toast({
+          title: 'Arquivo carregado',
+          description: `${jsonData.length} linhas encontradas no arquivo`,
+        });
+      } catch (error: any) {
+        toast({
+          title: 'Erro',
+          description: 'Erro ao processar arquivo Excel: ' + error.message,
+          variant: 'destructive',
+        });
+      }
+    };
+    
+    reader.readAsArrayBuffer(file);
+  };
+
   const importContacts = async () => {
-    if (!selectedCampaign || !importData.trim()) return;
+    if (!selectedCampaign || (!importData.trim() && !importFile)) return;
 
     try {
       const lines = importData.trim().split('\n');
@@ -218,6 +266,8 @@ export default function Campaigns() {
       
       setImportDialogOpen(false);
       setImportData('');
+      setImportFile(null);
+      setImportMethod('text');
       setSelectedCampaign(null);
       fetchCampaigns();
       
@@ -358,24 +408,80 @@ export default function Campaigns() {
               <DialogTitle>Importar Lista de Contatos</DialogTitle>
             </DialogHeader>
             <div className="space-y-4">
-              <div>
-                <Label htmlFor="import-data">Dados dos Contatos</Label>
-                <p className="text-sm text-muted-foreground mb-2">
-                  Cole os dados no formato: Nome, Telefone, Mensagem Personalizada (opcional)
-                </p>
-                <p className="text-xs text-muted-foreground mb-2">
-                  Exemplo:<br/>
-                  João Silva, 11999887766, Olá João!<br/>
-                  Maria Santos, 11888776655
-                </p>
-                <Textarea
-                  id="import-data"
-                  value={importData}
-                  onChange={(e) => setImportData(e.target.value)}
-                  placeholder="João Silva, 11999887766, Olá João!&#10;Maria Santos, 11888776655"
-                  rows={10}
-                />
+              {/* Import Method Selection */}
+              <div className="flex gap-2 border rounded-lg p-1">
+                <Button
+                  variant={importMethod === 'text' ? 'default' : 'ghost'}
+                  size="sm"
+                  onClick={() => setImportMethod('text')}
+                  className="flex-1"
+                >
+                  <FileText className="h-4 w-4 mr-2" />
+                  Texto
+                </Button>
+                <Button
+                  variant={importMethod === 'file' ? 'default' : 'ghost'}
+                  size="sm"
+                  onClick={() => setImportMethod('file')}
+                  className="flex-1"
+                >
+                  <FileSpreadsheet className="h-4 w-4 mr-2" />
+                  Excel/XLS
+                </Button>
               </div>
+
+              {importMethod === 'text' ? (
+                <div>
+                  <Label htmlFor="import-data">Dados dos Contatos</Label>
+                  <p className="text-sm text-muted-foreground mb-2">
+                    Cole os dados no formato: Nome, Telefone, Mensagem Personalizada (opcional)
+                  </p>
+                  <p className="text-xs text-muted-foreground mb-2">
+                    Exemplo:<br/>
+                    João Silva, 11999887766, Olá João!<br/>
+                    Maria Santos, 11888776655
+                  </p>
+                  <Textarea
+                    id="import-data"
+                    value={importData}
+                    onChange={(e) => setImportData(e.target.value)}
+                    placeholder="João Silva, 11999887766, Olá João!&#10;Maria Santos, 11888776655"
+                    rows={10}
+                  />
+                </div>
+              ) : (
+                <div>
+                  <Label htmlFor="excel-file">Arquivo Excel (.xlsx, .xls)</Label>
+                  <p className="text-sm text-muted-foreground mb-2">
+                    Selecione um arquivo Excel com as colunas: Nome, Telefone, Mensagem (opcional)
+                  </p>
+                  <input
+                    id="excel-file"
+                    type="file"
+                    accept=".xlsx,.xls"
+                    onChange={handleFileUpload}
+                    className="w-full p-2 border rounded-md"
+                  />
+                  {importFile && (
+                    <div className="flex items-center gap-2 p-2 bg-green-50 rounded-lg mt-2">
+                      <FileSpreadsheet className="h-4 w-4 text-green-600" />
+                      <span className="text-sm text-green-700">{importFile.name}</span>
+                    </div>
+                  )}
+                  {importData && (
+                    <div className="mt-3">
+                      <Label>Dados processados do arquivo:</Label>
+                      <Textarea
+                        value={importData}
+                        onChange={(e) => setImportData(e.target.value)}
+                        rows={6}
+                        className="mt-1"
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
+              
               <div className="flex items-center gap-2 p-3 bg-muted rounded-lg">
                 <FileText className="h-4 w-4 text-muted-foreground" />
                 <div className="text-sm">
@@ -383,11 +489,17 @@ export default function Campaigns() {
                   <p className="text-muted-foreground">Nome, Telefone, Mensagem (opcional)</p>
                 </div>
               </div>
+              
               <div className="flex gap-2 justify-end">
-                <Button variant="outline" onClick={() => setImportDialogOpen(false)}>
+                <Button variant="outline" onClick={() => {
+                  setImportDialogOpen(false);
+                  setImportData('');
+                  setImportFile(null);
+                  setImportMethod('text');
+                }}>
                   Cancelar
                 </Button>
-                <Button onClick={importContacts}>
+                <Button onClick={importContacts} disabled={!importData.trim()}>
                   <Upload className="h-4 w-4 mr-2" />
                   Importar Contatos
                 </Button>
