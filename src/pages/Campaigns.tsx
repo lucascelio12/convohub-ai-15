@@ -175,6 +175,7 @@ export default function Campaigns() {
   };
 
   const handleImportContacts = (campaign: Campaign) => {
+    console.log('Opening import dialog for campaign:', campaign.name);
     setSelectedCampaign(campaign);
     setImportDialogOpen(true);
   };
@@ -413,7 +414,10 @@ export default function Campaigns() {
                 <Button
                   variant={importMethod === 'text' ? 'default' : 'ghost'}
                   size="sm"
-                  onClick={() => setImportMethod('text')}
+                  onClick={() => {
+                    console.log('Switching to text method');
+                    setImportMethod('text');
+                  }}
                   className="flex-1"
                 >
                   <FileText className="h-4 w-4 mr-2" />
@@ -422,7 +426,10 @@ export default function Campaigns() {
                 <Button
                   variant={importMethod === 'file' ? 'default' : 'ghost'}
                   size="sm"
-                  onClick={() => setImportMethod('file')}
+                  onClick={() => {
+                    console.log('Switching to Excel method');
+                    setImportMethod('file');
+                  }}
                   className="flex-1"
                 >
                   <FileSpreadsheet className="h-4 w-4 mr-2" />
