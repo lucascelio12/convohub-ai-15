@@ -5,9 +5,11 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
-import { Plus, Send, Users, MessageSquare, MoreVertical, Play, Pause } from 'lucide-react';
+import { Plus, Send, Users, MessageSquare, MoreVertical, Play, Pause, Edit, Trash2, Upload, FileText } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
@@ -27,10 +29,18 @@ export default function Campaigns() {
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(null);
   const [newCampaign, setNewCampaign] = useState({
     name: '',
     message_template: ''
   });
+  const [editCampaign, setEditCampaign] = useState({
+    name: '',
+    message_template: ''
+  });
+  const [importData, setImportData] = useState('');
   const { user } = useAuth();
   const { toast } = useToast();
 
@@ -84,6 +94,141 @@ export default function Campaigns() {
       toast({
         title: 'Erro',
         description: 'Erro ao criar campanha: ' + error.message,
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const updateCampaign = async () => {
+    if (!selectedCampaign || !editCampaign.name.trim() || !editCampaign.message_template.trim()) return;
+
+    try {
+      const { error } = await supabase
+        .from('campaigns')
+        .update({
+          name: editCampaign.name,
+          message_template: editCampaign.message_template,
+        })
+        .eq('id', selectedCampaign.id);
+
+      if (error) throw error;
+      
+      setEditDialogOpen(false);
+      setSelectedCampaign(null);
+      setEditCampaign({ name: '', message_template: '' });
+      fetchCampaigns();
+      
+      toast({
+        title: 'Sucesso',
+        description: 'Campanha atualizada com sucesso!',
+      });
+    } catch (error: any) {
+      toast({
+        title: 'Erro',
+        description: 'Erro ao atualizar campanha: ' + error.message,
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const deleteCampaign = async (campaignId: string) => {
+    try {
+      // First delete campaign contacts
+      await supabase
+        .from('campaign_contacts')
+        .delete()
+        .eq('campaign_id', campaignId);
+
+      // Then delete campaign
+      const { error } = await supabase
+        .from('campaigns')
+        .delete()
+        .eq('id', campaignId);
+
+      if (error) throw error;
+      
+      fetchCampaigns();
+      
+      toast({
+        title: 'Sucesso',
+        description: 'Campanha excluída com sucesso!',
+      });
+    } catch (error: any) {
+      toast({
+        title: 'Erro',
+        description: 'Erro ao excluir campanha: ' + error.message,
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const handleEditCampaign = (campaign: Campaign) => {
+    setSelectedCampaign(campaign);
+    setEditCampaign({
+      name: campaign.name,
+      message_template: campaign.message_template
+    });
+    setEditDialogOpen(true);
+  };
+
+  const handleImportContacts = (campaign: Campaign) => {
+    setSelectedCampaign(campaign);
+    setImportDialogOpen(true);
+  };
+
+  const importContacts = async () => {
+    if (!selectedCampaign || !importData.trim()) return;
+
+    try {
+      const lines = importData.trim().split('\n');
+      const contacts = [];
+      
+      for (const line of lines) {
+        const parts = line.split(',').map(p => p.trim());
+        if (parts.length >= 2) {
+          contacts.push({
+            campaign_id: selectedCampaign.id,
+            name: parts[0],
+            phone_number: parts[1],
+            custom_message: parts[2] || null,
+          });
+        }
+      }
+
+      if (contacts.length === 0) {
+        toast({
+          title: 'Erro',
+          description: 'Nenhum contato válido encontrado',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      const { error } = await supabase
+        .from('campaign_contacts')
+        .insert(contacts);
+
+      if (error) throw error;
+
+      // Update total contacts count
+      await supabase
+        .from('campaigns')
+        .update({ total_contacts: contacts.length })
+        .eq('id', selectedCampaign.id);
+      
+      setImportDialogOpen(false);
+      setImportData('');
+      setSelectedCampaign(null);
+      fetchCampaigns();
+      
+      toast({
+        title: 'Sucesso',
+        description: `${contacts.length} contatos importados com sucesso!`,
+      });
+    } catch (error: any) {
+      toast({
+        title: 'Erro',
+        description: 'Erro ao importar contatos: ' + error.message,
         variant: 'destructive',
       });
     }
@@ -167,6 +312,89 @@ export default function Campaigns() {
             </div>
           </DialogContent>
         </Dialog>
+
+        {/* Edit Campaign Dialog */}
+        <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Editar Campanha</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div>
+                <Label htmlFor="edit-name">Nome da Campanha</Label>
+                <Input
+                  id="edit-name"
+                  value={editCampaign.name}
+                  onChange={(e) => setEditCampaign({ ...editCampaign, name: e.target.value })}
+                  placeholder="Ex: Promoção Black Friday"
+                />
+              </div>
+              <div>
+                <Label htmlFor="edit-message">Mensagem</Label>
+                <Textarea
+                  id="edit-message"
+                  value={editCampaign.message_template}
+                  onChange={(e) => setEditCampaign({ ...editCampaign, message_template: e.target.value })}
+                  placeholder="Digite a mensagem que será enviada..."
+                  rows={4}
+                />
+              </div>
+              <div className="flex gap-2 justify-end">
+                <Button variant="outline" onClick={() => setEditDialogOpen(false)}>
+                  Cancelar
+                </Button>
+                <Button onClick={updateCampaign}>
+                  Salvar Alterações
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Import Contacts Dialog */}
+        <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>
+          <DialogContent className="max-w-lg">
+            <DialogHeader>
+              <DialogTitle>Importar Lista de Contatos</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div>
+                <Label htmlFor="import-data">Dados dos Contatos</Label>
+                <p className="text-sm text-muted-foreground mb-2">
+                  Cole os dados no formato: Nome, Telefone, Mensagem Personalizada (opcional)
+                </p>
+                <p className="text-xs text-muted-foreground mb-2">
+                  Exemplo:<br/>
+                  João Silva, 11999887766, Olá João!<br/>
+                  Maria Santos, 11888776655
+                </p>
+                <Textarea
+                  id="import-data"
+                  value={importData}
+                  onChange={(e) => setImportData(e.target.value)}
+                  placeholder="João Silva, 11999887766, Olá João!&#10;Maria Santos, 11888776655"
+                  rows={10}
+                />
+              </div>
+              <div className="flex items-center gap-2 p-3 bg-muted rounded-lg">
+                <FileText className="h-4 w-4 text-muted-foreground" />
+                <div className="text-sm">
+                  <p className="font-medium">Formato aceito:</p>
+                  <p className="text-muted-foreground">Nome, Telefone, Mensagem (opcional)</p>
+                </div>
+              </div>
+              <div className="flex gap-2 justify-end">
+                <Button variant="outline" onClick={() => setImportDialogOpen(false)}>
+                  Cancelar
+                </Button>
+                <Button onClick={importContacts}>
+                  <Upload className="h-4 w-4 mr-2" />
+                  Importar Contatos
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
 
       {campaigns.length === 0 ? (
@@ -207,9 +435,48 @@ export default function Campaigns() {
                         <Play className="h-4 w-4" />
                       </Button>
                     )}
-                    <Button variant="ghost" size="sm">
-                      <MoreVertical className="h-4 w-4" />
-                    </Button>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="sm">
+                          <MoreVertical className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => handleEditCampaign(campaign)}>
+                          <Edit className="h-4 w-4 mr-2" />
+                          Editar
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleImportContacts(campaign)}>
+                          <Upload className="h-4 w-4 mr-2" />
+                          Importar Lista
+                        </DropdownMenuItem>
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <DropdownMenuItem onSelect={(e) => e.preventDefault()} className="text-red-600">
+                              <Trash2 className="h-4 w-4 mr-2" />
+                              Excluir
+                            </DropdownMenuItem>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Confirmar Exclusão</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                Tem certeza de que deseja excluir esta campanha? Esta ação não pode ser desfeita.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                              <AlertDialogAction 
+                                onClick={() => deleteCampaign(campaign.id)}
+                                className="bg-red-600 hover:bg-red-700"
+                              >
+                                Excluir
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </div>
                 </div>
               </CardHeader>
