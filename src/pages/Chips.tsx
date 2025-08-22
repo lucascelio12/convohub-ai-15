@@ -78,14 +78,23 @@ export default function Chips() {
   const generateQRCode = async (chipId: string) => {
     setGeneratingQR(chipId);
     try {
-      // Conectar via servidor real
+      console.log('Iniciando conexão para chip:', chipId);
+      
+      // Conectar via servidor real ou simulado
       await connectChip(chipId);
       
       toast({
         title: 'Sucesso',
-        description: 'Conexão iniciada! Aguarde o QR Code.',
+        description: 'Processo de conexão iniciado! O QR Code aparecerá em instantes.',
       });
+
+      // Para simulação local, forçar atualização do status após um tempo
+      setTimeout(() => {
+        console.log('Verificando status do chip após conexão:', chipId);
+      }, 3000);
+      
     } catch (error: any) {
+      console.error('Erro ao conectar chip:', error);
       toast({
         title: 'Erro',
         description: 'Erro ao iniciar conexão: ' + error.message,
