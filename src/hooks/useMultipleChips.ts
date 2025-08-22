@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { whatsappService } from '@/services/whatsapp';
 import { io, Socket } from 'socket.io-client';
+import { useWhatsAppWebSocketReal } from './useWhatsAppWebSocketReal';
 
 interface ChipConnection {
   chipId: string;
@@ -16,6 +17,15 @@ export function useMultipleChips() {
   const [socket, setSocket] = useState<Socket | null>(null);
   const [serverAvailable, setServerAvailable] = useState(false);
   const [simulatedConnections, setSimulatedConnections] = useState<Map<string, ChipConnection>>(new Map());
+
+  // Hook para Edge Function (produção)
+  const {
+    isConnected: edgeFunctionConnected,
+    connections: edgeConnections,
+    startConnection: edgeStartConnection,
+    disconnectChip: edgeDisconnectChip,
+    getConnection: edgeGetConnection
+  } = useWhatsAppWebSocketReal();
 
   // URL do servidor WhatsApp (configurável)
   const WHATSAPP_SERVER_URL = import.meta.env.VITE_WHATSAPP_SERVER_URL || 'http://localhost:3001';
@@ -126,32 +136,49 @@ export function useMultipleChips() {
     }
   };
 
-  // Conectar um chip específico
+  // Conectar um chip específico - prioridade: Edge Function > Servidor Local > Simulação
   const connectChip = async (chipId: string) => {
     try {
       updateConnectionStatus(chipId, 'connecting');
       
+      // 1. Primeiro tentar Edge Function (produção)
+      if (edgeFunctionConnected) {
+        console.log('Usando Edge Function para conexão real:', chipId);
+        const success = edgeStartConnection(chipId);
+        if (success) {
+          return;
+        }
+      }
+
+      // 2. Fallback para servidor local
       if (serverAvailable) {
-        // Usar servidor real
+        console.log('Usando servidor local para conexão:', chipId);
         await whatsappService.startConnection(chipId, '');
         setTimeout(fetchAllConnections, 1000);
-      } else {
-        // Modo simulado para desenvolvimento
-        console.log('Simulando conexão do chip:', chipId);
+        return;
+      }
+
+      // 3. Modo simulado para desenvolvimento (último recurso)
+      console.log('Simulando conexão do chip (modo dev):', chipId);
+      
+      // Simular processo de conexão mais realista
+      setTimeout(() => {
+        updateConnectionStatus(chipId, 'qr_ready', false, true);
+        console.log('QR Code simulado gerado para chip:', chipId);
         
-        // Simular processo de conexão
+        // Simular conexão bem-sucedida após 15 segundos
         setTimeout(() => {
-          updateConnectionStatus(chipId, 'qr_ready', false, true);
-          console.log('QR Code simulado gerado para chip:', chipId);
+          updateConnectionStatus(chipId, 'authenticated', false, false);
+          console.log('Chip simulado autenticado:', chipId);
           
-          // Simular conexão bem-sucedida após 10 segundos
+          // Finalizar conexão
           setTimeout(() => {
             updateConnectionStatus(chipId, 'connected', true, false);
             console.log('Chip simulado conectado:', chipId);
-          }, 10000);
-          
-        }, 2000);
-      }
+          }, 2000);
+        }, 15000);
+        
+      }, 2000);
       
     } catch (error) {
       console.error(`Erro ao conectar chip ${chipId}:`, error);
@@ -162,8 +189,16 @@ export function useMultipleChips() {
   // Desconectar um chip específico
   const disconnectChip = async (chipId: string) => {    
     try {
+      // 1. Tentar Edge Function primeiro
+      if (edgeFunctionConnected) {
+        const success = edgeDisconnectChip(chipId);
+        if (success) {
+          return;
+        }
+      }
+
+      // 2. Servidor local
       if (serverAvailable) {
-        // Usar servidor real
         const response = await fetch(`${WHATSAPP_SERVER_URL}/whatsapp/disconnect`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -172,88 +207,57 @@ export function useMultipleChips() {
 
         if (response.ok) {
           updateConnectionStatus(chipId, 'disconnected', false, false);
+          return;
         }
-      } else {
-        // Modo simulado
-        console.log('Simulando desconexão do chip:', chipId);
-        updateConnectionStatus(chipId, 'disconnected', false, false);
       }
+
+      // 3. Modo simulado
+      console.log('Simulando desconexão do chip:', chipId);
+      updateConnectionStatus(chipId, 'disconnected', false, false);
+      
     } catch (error) {
       console.error(`Erro ao desconectar chip ${chipId}:`, error);
     }
   };
 
-  // Obter QR Code de um chip específico
+  // Obter QR Code de um chip específico (prioridade: Edge Function > Servidor Local > Simulação)
   const getQrCode = async (chipId: string): Promise<string | null> => {
     try {
+      // 1. Primeiro tentar Edge Function (produção)
+      if (edgeFunctionConnected) {
+        const edgeConnection = edgeGetConnection(chipId);
+        if (edgeConnection?.qrCode) {
+          console.log('QR Code obtido da Edge Function');
+          return edgeConnection.qrCode;
+        }
+      }
+
+      // 2. Fallback para servidor local
       if (serverAvailable) {
-        // Usar servidor real
         const response = await fetch(`${WHATSAPP_SERVER_URL}/whatsapp/status?chipId=${chipId}`);
         if (response.ok) {
           const data = await response.json();
+          console.log('QR Code obtido do servidor local:', data.qrCode ? 'disponível' : 'não disponível');
           return data.qrCode || null;
         }
         return null;
-      } else {
-        // Modo simulado - gerar QR code visual
-        const chipStatus = connections.find(c => c.chipId === chipId);
-        if (chipStatus?.hasQrCode) {
-          console.log('Gerando QR Code simulado para chip:', chipId);
-          
-          // Gerar QR code simulado visual
-          const canvas = document.createElement('canvas');
-          canvas.width = 200;
-          canvas.height = 200;
-          const ctx = canvas.getContext('2d');
-          
-          if (ctx) {
-            // Fundo branco
-            ctx.fillStyle = '#FFFFFF';
-            ctx.fillRect(0, 0, 200, 200);
-            
-            // Desenhar padrão que parece um QR code
-            ctx.fillStyle = '#000000';
-            
-            // Cantos principais (quadrados grandes)
-            ctx.fillRect(10, 10, 50, 50);
-            ctx.fillRect(140, 10, 50, 50);
-            ctx.fillRect(10, 140, 50, 50);
-            
-            // Quadrados internos dos cantos
-            ctx.fillStyle = '#FFFFFF';
-            ctx.fillRect(20, 20, 30, 30);
-            ctx.fillRect(150, 20, 30, 30);
-            ctx.fillRect(20, 150, 30, 30);
-            
-            // Pontos centrais
-            ctx.fillStyle = '#000000';
-            ctx.fillRect(30, 30, 10, 10);
-            ctx.fillRect(160, 30, 10, 10);
-            ctx.fillRect(30, 160, 10, 10);
-            
-            // Padrão aleatório para simular dados
-            for (let i = 70; i < 190; i += 10) {
-              for (let j = 70; j < 130; j += 10) {
-                if (Math.random() > 0.5) {
-                  ctx.fillRect(i, j, 8, 8);
-                }
-              }
-            }
-            
-            // Mais alguns padrões
-            for (let i = 10; i < 60; i += 10) {
-              for (let j = 70; j < 130; j += 10) {
-                if (Math.random() > 0.6) {
-                  ctx.fillRect(i, j, 8, 8);
-                }
-              }
-            }
-            
-            return canvas.toDataURL();
-          }
-        }
-        return null;
       }
+
+      // 3. Modo simulado - gerar QR code mais realista
+      const chipStatus = connections.find(c => c.chipId === chipId);
+      if (chipStatus?.hasQrCode) {
+        console.log('Gerando QR Code simulado realista para chip:', chipId);
+        
+        // Gerar QR code usando API externa (mais realista)
+        const timestamp = Date.now();
+        const qrData = `whatsapp://connect?session=${chipId}-${timestamp}&dev=true`;
+        const qrApiUrl = `https://api.qrserver.com/v1/create-qr-code/?size=256x256&data=${encodeURIComponent(qrData)}`;
+        
+        console.log('QR Code simulado gerado:', qrApiUrl);
+        return qrApiUrl;
+      }
+      return null;
+      
     } catch (error) {
       console.error(`Erro ao obter QR Code do chip ${chipId}:`, error);
       return null;
@@ -297,6 +301,23 @@ export function useMultipleChips() {
     };
   };
 
+  // Combinar conexões do Edge Function com conexões locais/simuladas
+  const getAllConnections = useCallback(() => {
+    // Priorizar conexões da Edge Function se disponível
+    if (edgeFunctionConnected && edgeConnections.length > 0) {
+      return edgeConnections.map(conn => ({
+        chipId: conn.chipId,
+        status: conn.status,
+        hasQrCode: conn.hasQrCode,
+        isReady: conn.isReady,
+        lastSeen: new Date().toISOString()
+      }));
+    }
+    
+    // Fallback para conexões locais/simuladas
+    return connections;
+  }, [edgeFunctionConnected, edgeConnections, connections]);
+
   useEffect(() => {
     if (serverAvailable) {
       fetchAllConnections();
@@ -309,10 +330,11 @@ export function useMultipleChips() {
   }, [serverAvailable]);
 
   return {
-    connections,
+    connections: getAllConnections(),
     loading,
     socket,
     serverAvailable,
+    edgeFunctionConnected,
     connectChip,
     disconnectChip,
     getQrCode,
