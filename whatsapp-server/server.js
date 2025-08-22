@@ -181,6 +181,15 @@ app.get('/', (req, res) => {
   });
 });
 
+app.get('/health', (req, res) => {
+  res.json({
+    status: 'healthy',
+    message: 'WhatsApp Server operacional',
+    activeSessions: sessions.size,
+    timestamp: new Date().toISOString()
+  });
+});
+
 app.post('/whatsapp/connect', async (req, res) => {
   try {
     const { chipId } = req.body;
