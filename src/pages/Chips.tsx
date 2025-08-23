@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { QRCodeSVG } from 'qrcode.react';
-import { Plus, Smartphone, Wifi, WifiOff, Download, Trash2, RotateCcw, Settings, Eye } from 'lucide-react';
+import { Plus, Smartphone, Wifi, WifiOff, Download, Trash2, RotateCcw, Settings, Eye, Edit, AlertTriangle } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
@@ -36,6 +36,10 @@ export default function Chips() {
   const [generatingQR, setGeneratingQR] = useState<string | null>(null);
   const [selectedChipQR, setSelectedChipQR] = useState<string | null>(null);
   const [qrDialogOpen, setQrDialogOpen] = useState(false);
+  const [editingChip, setEditingChip] = useState<Chip | null>(null);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [chipToDelete, setChipToDelete] = useState<string | null>(null);
   const { toast } = useToast();
   const { user } = useAuth();
   
@@ -177,6 +181,72 @@ export default function Chips() {
       toast({
         title: 'Erro',
         description: 'Erro ao criar chip: ' + error.message,
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const editChip = async () => {
+    if (!editingChip || !editingChip.name.trim() || !editingChip.phone_number.trim()) {
+      toast({
+        title: 'Erro',
+        description: 'Preencha todos os campos.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('chips')
+        .update({
+          name: editingChip.name,
+          phone_number: editingChip.phone_number
+        })
+        .eq('id', editingChip.id);
+
+      if (error) throw error;
+
+      toast({
+        title: 'Sucesso',
+        description: 'Chip atualizado com sucesso!',
+      });
+
+      setEditDialogOpen(false);
+      setEditingChip(null);
+      fetchChips();
+    } catch (error: any) {
+      toast({
+        title: 'Erro',
+        description: 'Erro ao atualizar chip: ' + error.message,
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const deleteChip = async () => {
+    if (!chipToDelete) return;
+
+    try {
+      const { error } = await supabase
+        .from('chips')
+        .delete()
+        .eq('id', chipToDelete);
+
+      if (error) throw error;
+
+      toast({
+        title: 'Sucesso',
+        description: 'Chip excluído com sucesso!',
+      });
+
+      setDeleteConfirmOpen(false);
+      setChipToDelete(null);
+      fetchChips();
+    } catch (error: any) {
+      toast({
+        title: 'Erro',
+        description: 'Erro ao excluir chip: ' + error.message,
         variant: 'destructive',
       });
     }
@@ -324,47 +394,77 @@ export default function Chips() {
                 </div>
 
                 {/* Botões de ação */}
-                <div className="flex flex-wrap gap-2">
-                  {chipWithRealStatus.realStatus === 'disconnected' && (
-                    <Button 
-                      size="sm" 
-                      onClick={() => generateQRCode(chip.id)}
-                      disabled={generatingQR === chip.id}
-                    >
-                      {generatingQR === chip.id ? 'Conectando...' : 'Conectar'}
-                    </Button>
-                  )}
-                  
-                  {chipWithRealStatus.hasQrCode && chipWithRealStatus.realStatus === 'qr_ready' && (
+                <div className="space-y-2">
+                  <div className="flex flex-wrap gap-2">
+                    {chipWithRealStatus.realStatus === 'disconnected' && (
+                      <Button 
+                        size="sm" 
+                        onClick={() => generateQRCode(chip.id)}
+                        disabled={generatingQR === chip.id}
+                      >
+                        {generatingQR === chip.id ? 'Conectando...' : 'Conectar'}
+                      </Button>
+                    )}
+                    
+                    {chipWithRealStatus.hasQrCode && chipWithRealStatus.realStatus === 'qr_ready' && (
+                      <Button 
+                        size="sm" 
+                        variant="outline"
+                        onClick={() => viewQRCode(chip.id)}
+                      >
+                        <Eye className="h-3 w-3 mr-1" />
+                        Ver QR
+                      </Button>
+                    )}
+                    
+                    {chipWithRealStatus.realStatus === 'connected' && (
+                      <Button 
+                        size="sm" 
+                        variant="destructive"
+                        onClick={() => handleDisconnect(chip.id)}
+                      >
+                        Desconectar
+                      </Button>
+                    )}
+                    
                     <Button 
                       size="sm" 
                       variant="outline"
-                      onClick={() => viewQRCode(chip.id)}
+                      onClick={() => generateQRCode(chip.id)}
+                      disabled={generatingQR === chip.id}
                     >
-                      <Eye className="h-3 w-3 mr-1" />
-                      Ver QR
+                      <RotateCcw className={`h-3 w-3 mr-1 ${generatingQR === chip.id ? 'animate-spin' : ''}`} />
+                      Renovar
                     </Button>
-                  )}
+                  </div>
                   
-                  {chipWithRealStatus.realStatus === 'connected' && (
+                  {/* Botões de editar e excluir */}
+                  <div className="flex gap-2 border-t pt-2">
                     <Button 
                       size="sm" 
-                      variant="destructive"
-                      onClick={() => handleDisconnect(chip.id)}
+                      variant="secondary"
+                      onClick={() => {
+                        setEditingChip(chip);
+                        setEditDialogOpen(true);
+                      }}
+                      className="flex-1"
                     >
-                      Desconectar
+                      <Edit className="h-3 w-3 mr-1" />
+                      Editar
                     </Button>
-                  )}
-                  
-                  <Button 
-                    size="sm" 
-                    variant="outline"
-                    onClick={() => generateQRCode(chip.id)}
-                    disabled={generatingQR === chip.id}
-                  >
-                    <RotateCcw className={`h-3 w-3 mr-1 ${generatingQR === chip.id ? 'animate-spin' : ''}`} />
-                    Renovar
-                  </Button>
+                    <Button 
+                      size="sm" 
+                      variant="outline"
+                      onClick={() => {
+                        setChipToDelete(chip.id);
+                        setDeleteConfirmOpen(true);
+                      }}
+                      className="flex-1 text-destructive hover:text-destructive"
+                    >
+                      <Trash2 className="h-3 w-3 mr-1" />
+                      Excluir
+                    </Button>
+                  </div>
                 </div>
 
                 {/* Status da conexão real */}
@@ -426,6 +526,85 @@ export default function Chips() {
             >
               Fechar
             </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog para editar chip */}
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Editar Chip</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Nome do Chip</Label>
+              <Input
+                placeholder="Ex: WhatsApp Principal"
+                value={editingChip?.name || ''}
+                onChange={(e) => setEditingChip(prev => prev ? {...prev, name: e.target.value} : null)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Número de Telefone</Label>
+              <Input
+                placeholder="Ex: 5511999999999"
+                value={editingChip?.phone_number || ''}
+                onChange={(e) => setEditingChip(prev => prev ? {...prev, phone_number: e.target.value} : null)}
+              />
+            </div>
+            <div className="flex gap-2">
+              <Button 
+                variant="outline" 
+                onClick={() => {
+                  setEditDialogOpen(false);
+                  setEditingChip(null);
+                }}
+                className="flex-1"
+              >
+                Cancelar
+              </Button>
+              <Button onClick={editChip} className="flex-1">
+                Salvar
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog de confirmação de exclusão */}
+      <Dialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-destructive" />
+              Confirmar Exclusão
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Tem certeza que deseja excluir este chip? Esta ação não pode ser desfeita.
+            </p>
+            <div className="flex gap-2">
+              <Button 
+                variant="outline" 
+                onClick={() => {
+                  setDeleteConfirmOpen(false);
+                  setChipToDelete(null);
+                }}
+                className="flex-1"
+              >
+                Cancelar
+              </Button>
+              <Button 
+                variant="destructive" 
+                onClick={deleteChip}
+                className="flex-1"
+              >
+                <Trash2 className="h-3 w-3 mr-1" />
+                Excluir
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>
