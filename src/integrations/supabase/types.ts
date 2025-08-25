@@ -14,6 +14,27 @@ export type Database = {
   }
   public: {
     Tables: {
+      campaign_chips: {
+        Row: {
+          campaign_id: string
+          chip_id: string
+          created_at: string
+          id: string
+        }
+        Insert: {
+          campaign_id: string
+          chip_id: string
+          created_at?: string
+          id?: string
+        }
+        Update: {
+          campaign_id?: string
+          chip_id?: string
+          created_at?: string
+          id?: string
+        }
+        Relationships: []
+      }
       campaign_contacts: {
         Row: {
           campaign_id: string

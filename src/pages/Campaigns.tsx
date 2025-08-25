@@ -9,7 +9,8 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
-import { Plus, Send, Users, MessageSquare, MoreVertical, Play, Pause, Edit, Trash2, Upload, FileText, FileSpreadsheet } from 'lucide-react';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Plus, Send, Users, MessageSquare, MoreVertical, Play, Pause, Edit, Trash2, Upload, FileText, FileSpreadsheet, Smartphone } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
@@ -24,10 +25,19 @@ interface Campaign {
   sent_count: number;
   success_count: number;
   created_at: string;
+  chips?: Chip[];
+}
+
+interface Chip {
+  id: string;
+  name: string;
+  phone_number: string;
+  status: string;
 }
 
 export default function Campaigns() {
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
+  const [chips, setChips] = useState<Chip[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -35,11 +45,13 @@ export default function Campaigns() {
   const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(null);
   const [newCampaign, setNewCampaign] = useState({
     name: '',
-    message_template: ''
+    message_template: '',
+    selectedChips: [] as string[]
   });
   const [editCampaign, setEditCampaign] = useState({
     name: '',
-    message_template: ''
+    message_template: '',
+    selectedChips: [] as string[]
   });
   const [importData, setImportData] = useState('');
   const [importFile, setImportFile] = useState<File | null>(null);
@@ -49,17 +61,36 @@ export default function Campaigns() {
 
   useEffect(() => {
     fetchCampaigns();
+    fetchChips();
   }, []);
 
   const fetchCampaigns = async () => {
     try {
       const { data, error } = await supabase
         .from('campaigns')
-        .select('*')
+        .select(`
+          *,
+          campaign_chips (
+            chip_id,
+            chips (
+              id,
+              name,
+              phone_number,
+              status
+            )
+          )
+        `)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      setCampaigns((data as Campaign[]) || []);
+      
+      // Organizar os dados dos chips
+      const campaignsWithChips = (data || []).map((campaign: any) => ({
+        ...campaign,
+        chips: campaign.campaign_chips?.map((cc: any) => cc.chips) || []
+      }));
+      
+      setCampaigns(campaignsWithChips as Campaign[]);
     } catch (error: any) {
       toast({
         title: 'Erro',
@@ -71,22 +102,67 @@ export default function Campaigns() {
     }
   };
 
+  const fetchChips = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('chips')
+        .select('id, name, phone_number, status')
+        .neq('status', 'inactive')
+        .order('name');
+
+      if (error) throw error;
+      setChips((data as Chip[]) || []);
+    } catch (error: any) {
+      toast({
+        title: 'Erro',
+        description: 'Erro ao carregar chips: ' + error.message,
+        variant: 'destructive',
+      });
+    }
+  };
+
   const createCampaign = async () => {
     if (!newCampaign.name.trim() || !newCampaign.message_template.trim()) return;
+    
+    if (newCampaign.selectedChips.length === 0) {
+      toast({
+        title: 'Erro',
+        description: 'Selecione pelo menos um chip para a campanha.',
+        variant: 'destructive',
+      });
+      return;
+    }
 
     try {
-      const { error } = await supabase
+      // Criar campanha
+      const { data: campaignData, error: campaignError } = await supabase
         .from('campaigns')
         .insert({
           name: newCampaign.name,
           message_template: newCampaign.message_template,
           created_by: user?.id || ''
-        });
+        })
+        .select()
+        .single();
 
-      if (error) throw error;
+      if (campaignError) throw campaignError;
+
+      // Associar chips à campanha
+      if (campaignData && newCampaign.selectedChips.length > 0) {
+        const chipAssociations = newCampaign.selectedChips.map(chipId => ({
+          campaign_id: campaignData.id,
+          chip_id: chipId
+        }));
+
+        const { error: chipsError } = await supabase
+          .from('campaign_chips')
+          .insert(chipAssociations);
+
+        if (chipsError) throw chipsError;
+      }
       
       setDialogOpen(false);
-      setNewCampaign({ name: '', message_template: '' });
+      setNewCampaign({ name: '', message_template: '', selectedChips: [] });
       fetchCampaigns();
       
       toast({
@@ -104,9 +180,19 @@ export default function Campaigns() {
 
   const updateCampaign = async () => {
     if (!selectedCampaign || !editCampaign.name.trim() || !editCampaign.message_template.trim()) return;
+    
+    if (editCampaign.selectedChips.length === 0) {
+      toast({
+        title: 'Erro',
+        description: 'Selecione pelo menos um chip para a campanha.',
+        variant: 'destructive',
+      });
+      return;
+    }
 
     try {
-      const { error } = await supabase
+      // Atualizar campanha
+      const { error: campaignError } = await supabase
         .from('campaigns')
         .update({
           name: editCampaign.name,
@@ -114,11 +200,31 @@ export default function Campaigns() {
         })
         .eq('id', selectedCampaign.id);
 
-      if (error) throw error;
+      if (campaignError) throw campaignError;
+
+      // Remover associações antigas
+      await supabase
+        .from('campaign_chips')
+        .delete()
+        .eq('campaign_id', selectedCampaign.id);
+
+      // Criar novas associações
+      if (editCampaign.selectedChips.length > 0) {
+        const chipAssociations = editCampaign.selectedChips.map(chipId => ({
+          campaign_id: selectedCampaign.id,
+          chip_id: chipId
+        }));
+
+        const { error: chipsError } = await supabase
+          .from('campaign_chips')
+          .insert(chipAssociations);
+
+        if (chipsError) throw chipsError;
+      }
       
       setEditDialogOpen(false);
       setSelectedCampaign(null);
-      setEditCampaign({ name: '', message_template: '' });
+      setEditCampaign({ name: '', message_template: '', selectedChips: [] });
       fetchCampaigns();
       
       toast({
@@ -169,7 +275,8 @@ export default function Campaigns() {
     setSelectedCampaign(campaign);
     setEditCampaign({
       name: campaign.name,
-      message_template: campaign.message_template
+      message_template: campaign.message_template,
+      selectedChips: campaign.chips?.map(chip => chip.id) || []
     });
     setEditDialogOpen(true);
   };
@@ -328,7 +435,7 @@ export default function Campaigns() {
               Nova Campanha
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-w-md">
+            <DialogContent className="max-w-lg">
             <DialogHeader>
               <DialogTitle>Criar Nova Campanha</DialogTitle>
             </DialogHeader>
@@ -352,8 +459,68 @@ export default function Campaigns() {
                   rows={4}
                 />
               </div>
+              <div>
+                <Label>Chips para Envio</Label>
+                <p className="text-sm text-muted-foreground mb-3">
+                  Selecione um ou mais chips para enviar as mensagens da campanha
+                </p>
+                <div className="border rounded-lg p-3 max-h-48 overflow-y-auto">
+                  {chips.length === 0 ? (
+                    <p className="text-sm text-muted-foreground text-center py-4">
+                      Nenhum chip disponível
+                    </p>
+                  ) : (
+                    <div className="space-y-2">
+                      {chips.map((chip) => (
+                        <div key={chip.id} className="flex items-center space-x-2">
+                          <Checkbox
+                            id={`chip-${chip.id}`}
+                            checked={newCampaign.selectedChips.includes(chip.id)}
+                            onCheckedChange={(checked) => {
+                              if (checked) {
+                                setNewCampaign({
+                                  ...newCampaign,
+                                  selectedChips: [...newCampaign.selectedChips, chip.id]
+                                });
+                              } else {
+                                setNewCampaign({
+                                  ...newCampaign,
+                                  selectedChips: newCampaign.selectedChips.filter(id => id !== chip.id)
+                                });
+                              }
+                            }}
+                          />
+                          <div className="flex items-center gap-2 flex-1">
+                            <Smartphone className="h-4 w-4 text-muted-foreground" />
+                            <div>
+                              <label htmlFor={`chip-${chip.id}`} className="text-sm font-medium cursor-pointer">
+                                {chip.name}
+                              </label>
+                              <p className="text-xs text-muted-foreground">{chip.phone_number}</p>
+                            </div>
+                            <Badge 
+                              variant={chip.status === 'active' ? 'default' : 'secondary'}
+                              className="text-xs"
+                            >
+                              {chip.status}
+                            </Badge>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                {newCampaign.selectedChips.length > 0 && (
+                  <p className="text-xs text-green-600 mt-2">
+                    {newCampaign.selectedChips.length} chip(s) selecionado(s)
+                  </p>
+                )}
+              </div>
               <div className="flex gap-2 justify-end">
-                <Button variant="outline" onClick={() => setDialogOpen(false)}>
+                <Button variant="outline" onClick={() => {
+                  setDialogOpen(false);
+                  setNewCampaign({ name: '', message_template: '', selectedChips: [] });
+                }}>
                   Cancelar
                 </Button>
                 <Button onClick={createCampaign}>
@@ -366,7 +533,7 @@ export default function Campaigns() {
 
         {/* Edit Campaign Dialog */}
         <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
-          <DialogContent className="max-w-md">
+          <DialogContent className="max-w-lg">
             <DialogHeader>
               <DialogTitle>Editar Campanha</DialogTitle>
             </DialogHeader>
@@ -390,8 +557,68 @@ export default function Campaigns() {
                   rows={4}
                 />
               </div>
+              <div>
+                <Label>Chips para Envio</Label>
+                <p className="text-sm text-muted-foreground mb-3">
+                  Selecione um ou mais chips para enviar as mensagens da campanha
+                </p>
+                <div className="border rounded-lg p-3 max-h-48 overflow-y-auto">
+                  {chips.length === 0 ? (
+                    <p className="text-sm text-muted-foreground text-center py-4">
+                      Nenhum chip disponível
+                    </p>
+                  ) : (
+                    <div className="space-y-2">
+                      {chips.map((chip) => (
+                        <div key={chip.id} className="flex items-center space-x-2">
+                          <Checkbox
+                            id={`edit-chip-${chip.id}`}
+                            checked={editCampaign.selectedChips.includes(chip.id)}
+                            onCheckedChange={(checked) => {
+                              if (checked) {
+                                setEditCampaign({
+                                  ...editCampaign,
+                                  selectedChips: [...editCampaign.selectedChips, chip.id]
+                                });
+                              } else {
+                                setEditCampaign({
+                                  ...editCampaign,
+                                  selectedChips: editCampaign.selectedChips.filter(id => id !== chip.id)
+                                });
+                              }
+                            }}
+                          />
+                          <div className="flex items-center gap-2 flex-1">
+                            <Smartphone className="h-4 w-4 text-muted-foreground" />
+                            <div>
+                              <label htmlFor={`edit-chip-${chip.id}`} className="text-sm font-medium cursor-pointer">
+                                {chip.name}
+                              </label>
+                              <p className="text-xs text-muted-foreground">{chip.phone_number}</p>
+                            </div>
+                            <Badge 
+                              variant={chip.status === 'active' ? 'default' : 'secondary'}
+                              className="text-xs"
+                            >
+                              {chip.status}
+                            </Badge>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                {editCampaign.selectedChips.length > 0 && (
+                  <p className="text-xs text-green-600 mt-2">
+                    {editCampaign.selectedChips.length} chip(s) selecionado(s)
+                  </p>
+                )}
+              </div>
               <div className="flex gap-2 justify-end">
-                <Button variant="outline" onClick={() => setEditDialogOpen(false)}>
+                <Button variant="outline" onClick={() => {
+                  setEditDialogOpen(false);
+                  setEditCampaign({ name: '', message_template: '', selectedChips: [] });
+                }}>
                   Cancelar
                 </Button>
                 <Button onClick={updateCampaign}>
@@ -605,6 +832,27 @@ export default function Campaigns() {
                   <div className="bg-muted p-3 rounded-lg">
                     <p className="text-sm">{campaign.message_template}</p>
                   </div>
+
+                  {/* Chips associados */}
+                  {campaign.chips && campaign.chips.length > 0 && (
+                    <div>
+                      <Label className="text-sm font-medium">Chips Selecionados:</Label>
+                      <div className="flex flex-wrap gap-2 mt-2">
+                        {campaign.chips.map((chip) => (
+                          <div key={chip.id} className="flex items-center gap-1 bg-primary/10 px-2 py-1 rounded-md">
+                            <Smartphone className="h-3 w-3 text-primary" />
+                            <span className="text-xs font-medium">{chip.name}</span>
+                            <Badge 
+                              variant={chip.status === 'active' ? 'default' : 'secondary'}
+                              className="text-xs px-1 py-0"
+                            >
+                              {chip.status}
+                            </Badge>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
                   {/* Progress */}
                   {campaign.total_contacts > 0 && (
