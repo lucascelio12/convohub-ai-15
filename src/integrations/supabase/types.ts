@@ -82,8 +82,11 @@ export type Database = {
           created_at: string
           created_by: string
           id: string
+          is_scheduled: boolean | null
           message_template: string
           name: string
+          scheduled_date: string | null
+          scheduled_time: string | null
           sent_count: number | null
           status: string
           success_count: number | null
@@ -95,8 +98,11 @@ export type Database = {
           created_at?: string
           created_by: string
           id?: string
+          is_scheduled?: boolean | null
           message_template: string
           name: string
+          scheduled_date?: string | null
+          scheduled_time?: string | null
           sent_count?: number | null
           status?: string
           success_count?: number | null
@@ -108,8 +114,11 @@ export type Database = {
           created_at?: string
           created_by?: string
           id?: string
+          is_scheduled?: boolean | null
           message_template?: string
           name?: string
+          scheduled_date?: string | null
+          scheduled_time?: string | null
           sent_count?: number | null
           status?: string
           success_count?: number | null

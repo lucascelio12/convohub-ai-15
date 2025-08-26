@@ -10,7 +10,11 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Plus, Send, Users, MessageSquare, MoreVertical, Play, Pause, Edit, Trash2, Upload, FileText, FileSpreadsheet, Smartphone } from 'lucide-react';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Calendar } from '@/components/ui/calendar';
+import { Plus, Send, Users, MessageSquare, MoreVertical, Play, Pause, Edit, Trash2, Upload, FileText, FileSpreadsheet, Smartphone, CalendarIcon, Clock } from 'lucide-react';
+import { format } from 'date-fns';
+import { cn } from '@/lib/utils';
 import * as XLSX from 'xlsx';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
@@ -20,11 +24,14 @@ interface Campaign {
   id: string;
   name: string;
   message_template: string;
-  status: 'draft' | 'active' | 'paused' | 'completed';
+  status: 'draft' | 'programmed' | 'in_progress' | 'paused' | 'finished' | 'pending' | 'cancelled';
   total_contacts: number;
   sent_count: number;
   success_count: number;
   created_at: string;
+  scheduled_date?: string;
+  scheduled_time?: string;
+  is_scheduled?: boolean;
   chips?: Chip[];
 }
 
@@ -46,12 +53,18 @@ export default function Campaigns() {
   const [newCampaign, setNewCampaign] = useState({
     name: '',
     message_template: '',
-    selectedChips: [] as string[]
+    selectedChips: [] as string[],
+    isScheduled: false,
+    scheduledDate: undefined as Date | undefined,
+    scheduledTime: ''
   });
   const [editCampaign, setEditCampaign] = useState({
     name: '',
     message_template: '',
-    selectedChips: [] as string[]
+    selectedChips: [] as string[],
+    isScheduled: false,
+    scheduledDate: undefined as Date | undefined,
+    scheduledTime: ''
   });
   const [importData, setImportData] = useState('');
   const [importFile, setImportFile] = useState<File | null>(null);
@@ -134,23 +147,34 @@ export default function Campaigns() {
     }
 
     try {
+      // Preparar dados da campanha
+      const campaignData: any = {
+        name: newCampaign.name,
+        message_template: newCampaign.message_template,
+        created_by: user?.id || '',
+        is_scheduled: newCampaign.isScheduled,
+        status: newCampaign.isScheduled ? 'programmed' : 'draft'
+      };
+
+      // Adicionar data e hora se agendado
+      if (newCampaign.isScheduled && newCampaign.scheduledDate) {
+        campaignData.scheduled_date = format(newCampaign.scheduledDate, 'yyyy-MM-dd');
+        campaignData.scheduled_time = newCampaign.scheduledTime || null;
+      }
+
       // Criar campanha
-      const { data: campaignData, error: campaignError } = await supabase
+      const { data: createdCampaign, error: campaignError } = await supabase
         .from('campaigns')
-        .insert({
-          name: newCampaign.name,
-          message_template: newCampaign.message_template,
-          created_by: user?.id || ''
-        })
+        .insert(campaignData)
         .select()
         .single();
 
       if (campaignError) throw campaignError;
 
       // Associar chips à campanha
-      if (campaignData && newCampaign.selectedChips.length > 0) {
+      if (createdCampaign && newCampaign.selectedChips.length > 0) {
         const chipAssociations = newCampaign.selectedChips.map(chipId => ({
-          campaign_id: campaignData.id,
+          campaign_id: createdCampaign.id,
           chip_id: chipId
         }));
 
@@ -162,7 +186,14 @@ export default function Campaigns() {
       }
       
       setDialogOpen(false);
-      setNewCampaign({ name: '', message_template: '', selectedChips: [] });
+      setNewCampaign({ 
+        name: '', 
+        message_template: '', 
+        selectedChips: [],
+        isScheduled: false,
+        scheduledDate: undefined,
+        scheduledTime: ''
+      });
       fetchCampaigns();
       
       toast({
@@ -191,13 +222,21 @@ export default function Campaigns() {
     }
 
     try {
+      // Preparar dados de atualização
+      const updateData = {
+        name: editCampaign.name,
+        message_template: editCampaign.message_template,
+        is_scheduled: editCampaign.isScheduled,
+        scheduled_date: editCampaign.isScheduled && editCampaign.scheduledDate 
+          ? format(editCampaign.scheduledDate, 'yyyy-MM-dd') 
+          : null,
+        scheduled_time: editCampaign.isScheduled ? editCampaign.scheduledTime : null
+      };
+
       // Atualizar campanha
       const { error: campaignError } = await supabase
         .from('campaigns')
-        .update({
-          name: editCampaign.name,
-          message_template: editCampaign.message_template,
-        })
+        .update(updateData)
         .eq('id', selectedCampaign.id);
 
       if (campaignError) throw campaignError;
@@ -224,7 +263,14 @@ export default function Campaigns() {
       
       setEditDialogOpen(false);
       setSelectedCampaign(null);
-      setEditCampaign({ name: '', message_template: '', selectedChips: [] });
+      setEditCampaign({ 
+        name: '', 
+        message_template: '', 
+        selectedChips: [],
+        isScheduled: false,
+        scheduledDate: undefined,
+        scheduledTime: ''
+      });
       fetchCampaigns();
       
       toast({
@@ -276,7 +322,10 @@ export default function Campaigns() {
     setEditCampaign({
       name: campaign.name,
       message_template: campaign.message_template,
-      selectedChips: campaign.chips?.map(chip => chip.id) || []
+      selectedChips: campaign.chips?.map(chip => chip.id) || [],
+      isScheduled: campaign.is_scheduled || false,
+      scheduledDate: campaign.scheduled_date ? new Date(campaign.scheduled_date) : undefined,
+      scheduledTime: campaign.scheduled_time || ''
     });
     setEditDialogOpen(true);
   };
@@ -395,9 +444,12 @@ export default function Campaigns() {
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'draft': return 'bg-gray-100 text-gray-800 border-gray-200';
-      case 'active': return 'bg-green-100 text-green-800 border-green-200';
+      case 'programmed': return 'bg-purple-100 text-purple-800 border-purple-200';
+      case 'in_progress': return 'bg-blue-100 text-blue-800 border-blue-200';
       case 'paused': return 'bg-yellow-100 text-yellow-800 border-yellow-200';
-      case 'completed': return 'bg-blue-100 text-blue-800 border-blue-200';
+      case 'finished': return 'bg-green-100 text-green-800 border-green-200';
+      case 'pending': return 'bg-orange-100 text-orange-800 border-orange-200';
+      case 'cancelled': return 'bg-red-100 text-red-800 border-red-200';
       default: return 'bg-gray-100 text-gray-800 border-gray-200';
     }
   };
@@ -405,9 +457,12 @@ export default function Campaigns() {
   const getStatusLabel = (status: string) => {
     switch (status) {
       case 'draft': return 'Rascunho';
-      case 'active': return 'Ativa';
+      case 'programmed': return 'Programada';
+      case 'in_progress': return 'Em Andamento';
       case 'paused': return 'Pausada';
-      case 'completed': return 'Finalizada';
+      case 'finished': return 'Finalizada';
+      case 'pending': return 'Pendente';
+      case 'cancelled': return 'Cancelada';
       default: return status;
     }
   };
@@ -516,10 +571,84 @@ export default function Campaigns() {
                   </p>
                 )}
               </div>
+              
+              {/* Agendamento */}
+              <div className="space-y-3">
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="schedule-campaign"
+                    checked={newCampaign.isScheduled}
+                    onCheckedChange={(checked) => 
+                      setNewCampaign({ ...newCampaign, isScheduled: !!checked })
+                    }
+                  />
+                  <Label htmlFor="schedule-campaign" className="text-sm font-medium">
+                    Agendar campanha
+                  </Label>
+                </div>
+                
+                {newCampaign.isScheduled && (
+                  <div className="grid grid-cols-2 gap-3 pl-6">
+                    <div>
+                      <Label>Data</Label>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="outline"
+                            className={cn(
+                              "w-full justify-start text-left font-normal",
+                              !newCampaign.scheduledDate && "text-muted-foreground"
+                            )}
+                          >
+                            <CalendarIcon className="mr-2 h-4 w-4" />
+                            {newCampaign.scheduledDate ? (
+                              format(newCampaign.scheduledDate, "dd/MM/yyyy")
+                            ) : (
+                              "Selecione a data"
+                            )}
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0" align="start">
+                          <Calendar
+                            mode="single"
+                            selected={newCampaign.scheduledDate}
+                            onSelect={(date) => 
+                              setNewCampaign({ ...newCampaign, scheduledDate: date })
+                            }
+                            disabled={(date) => date < new Date()}
+                            initialFocus
+                            className="pointer-events-auto"
+                          />
+                        </PopoverContent>
+                      </Popover>
+                    </div>
+                    <div>
+                      <Label htmlFor="schedule-time">Hora</Label>
+                      <Input
+                        id="schedule-time"
+                        type="time"
+                        value={newCampaign.scheduledTime}
+                        onChange={(e) => 
+                          setNewCampaign({ ...newCampaign, scheduledTime: e.target.value })
+                        }
+                        className="w-full"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+              
               <div className="flex gap-2 justify-end">
                 <Button variant="outline" onClick={() => {
                   setDialogOpen(false);
-                  setNewCampaign({ name: '', message_template: '', selectedChips: [] });
+                  setNewCampaign({ 
+                    name: '', 
+                    message_template: '', 
+                    selectedChips: [],
+                    isScheduled: false,
+                    scheduledDate: undefined,
+                    scheduledTime: ''
+                  });
                 }}>
                   Cancelar
                 </Button>
@@ -614,10 +743,84 @@ export default function Campaigns() {
                   </p>
                 )}
               </div>
+              
+              {/* Agendamento - Editar */}
+              <div className="space-y-3">
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="edit-schedule-campaign"
+                    checked={editCampaign.isScheduled}
+                    onCheckedChange={(checked) => 
+                      setEditCampaign({ ...editCampaign, isScheduled: !!checked })
+                    }
+                  />
+                  <Label htmlFor="edit-schedule-campaign" className="text-sm font-medium">
+                    Agendar campanha
+                  </Label>
+                </div>
+                
+                {editCampaign.isScheduled && (
+                  <div className="grid grid-cols-2 gap-3 pl-6">
+                    <div>
+                      <Label>Data</Label>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="outline"
+                            className={cn(
+                              "w-full justify-start text-left font-normal",
+                              !editCampaign.scheduledDate && "text-muted-foreground"
+                            )}
+                          >
+                            <CalendarIcon className="mr-2 h-4 w-4" />
+                            {editCampaign.scheduledDate ? (
+                              format(editCampaign.scheduledDate, "dd/MM/yyyy")
+                            ) : (
+                              "Selecione a data"
+                            )}
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0" align="start">
+                          <Calendar
+                            mode="single"
+                            selected={editCampaign.scheduledDate}
+                            onSelect={(date) => 
+                              setEditCampaign({ ...editCampaign, scheduledDate: date })
+                            }
+                            disabled={(date) => date < new Date()}
+                            initialFocus
+                            className="pointer-events-auto"
+                          />
+                        </PopoverContent>
+                      </Popover>
+                    </div>
+                    <div>
+                      <Label htmlFor="edit-schedule-time">Hora</Label>
+                      <Input
+                        id="edit-schedule-time"
+                        type="time"
+                        value={editCampaign.scheduledTime}
+                        onChange={(e) => 
+                          setEditCampaign({ ...editCampaign, scheduledTime: e.target.value })
+                        }
+                        className="w-full"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+              
               <div className="flex gap-2 justify-end">
                 <Button variant="outline" onClick={() => {
                   setEditDialogOpen(false);
-                  setEditCampaign({ name: '', message_template: '', selectedChips: [] });
+                  setEditCampaign({ 
+                    name: '', 
+                    message_template: '', 
+                    selectedChips: [],
+                    isScheduled: false,
+                    scheduledDate: undefined,
+                    scheduledTime: ''
+                  });
                 }}>
                   Cancelar
                 </Button>
@@ -771,7 +974,7 @@ export default function Campaigns() {
                     <Badge className={getStatusColor(campaign.status)}>
                       {getStatusLabel(campaign.status)}
                     </Badge>
-                    {campaign.status === 'active' && (
+                    {campaign.status === 'in_progress' && (
                       <Button variant="outline" size="sm">
                         <Pause className="h-4 w-4" />
                       </Button>
@@ -850,6 +1053,29 @@ export default function Campaigns() {
                             </Badge>
                           </div>
                         ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Agendamento Info */}
+                  {campaign.is_scheduled && campaign.scheduled_date && (
+                    <div className="bg-purple-50 p-3 rounded-lg border border-purple-200">
+                      <div className="flex items-center gap-2 text-purple-800">
+                        <CalendarIcon className="h-4 w-4" />
+                        <span className="text-sm font-medium">Agendada para:</span>
+                      </div>
+                      <div className="flex items-center gap-3 mt-1">
+                        <span className="text-sm text-purple-700">
+                          {new Date(campaign.scheduled_date).toLocaleDateString('pt-BR')}
+                        </span>
+                        {campaign.scheduled_time && (
+                          <>
+                            <Clock className="h-3 w-3 text-purple-600" />
+                            <span className="text-sm text-purple-700">
+                              {campaign.scheduled_time}
+                            </span>
+                          </>
+                        )}
                       </div>
                     </div>
                   )}
