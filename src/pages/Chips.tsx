@@ -14,6 +14,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useMultipleChips } from '@/hooks/useMultipleChips';
 import { useWhatsAppRealTime } from '@/hooks/useWhatsAppRealTime';
 import { ChipStatusIndicator } from '@/components/ChipStatusIndicator';
+import { ChipWarming } from '@/components/ChipWarming';
 
 interface Chip {
   id: string;
@@ -300,6 +301,8 @@ export default function Chips() {
 
   return (
     <div className="space-y-6">
+      <ChipWarming />
+      
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Chips WhatsApp</h1>
