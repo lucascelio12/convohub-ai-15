@@ -497,6 +497,59 @@ export type Database = {
         }
         Relationships: []
       }
+      webhook_configs: {
+        Row: {
+          active: boolean
+          company_id: string | null
+          created_at: string
+          created_by: string
+          headers: Json | null
+          id: string
+          method: string
+          name: string
+          payload_template: string | null
+          type: string
+          updated_at: string
+          url: string
+        }
+        Insert: {
+          active?: boolean
+          company_id?: string | null
+          created_at?: string
+          created_by: string
+          headers?: Json | null
+          id?: string
+          method?: string
+          name: string
+          payload_template?: string | null
+          type: string
+          updated_at?: string
+          url: string
+        }
+        Update: {
+          active?: boolean
+          company_id?: string | null
+          created_at?: string
+          created_by?: string
+          headers?: Json | null
+          id?: string
+          method?: string
+          name?: string
+          payload_template?: string | null
+          type?: string
+          updated_at?: string
+          url?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "webhook_configs_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
