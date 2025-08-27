@@ -54,6 +54,7 @@ export function ChipWarming() {
         .eq('status', 'active');
 
       if (error) throw error;
+      console.log('Chips carregados:', data);
       setChips(data || []);
     } catch (error) {
       console.error('Erro ao buscar chips:', error);
@@ -237,34 +238,56 @@ export function ChipWarming() {
             </Badge>
           )}
           
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {chips.map((chip) => (
-              <div key={chip.id} className="flex items-center space-x-2 p-3 border rounded-lg">
-                <Checkbox
-                  id={chip.id}
-                  checked={selectedChips.includes(chip.id)}
-                  onCheckedChange={(checked) => handleChipSelection(chip.id, checked as boolean)}
-                  disabled={isWarming}
-                />
-                <label
-                  htmlFor={chip.id}
-                  className="flex-1 text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
-                >
-                  <div>
-                    <div className="font-medium">{chip.name}</div>
-                    <div className="text-muted-foreground">{chip.phone_number}</div>
-                  </div>
-                </label>
-                <Badge variant={chip.status === 'active' ? 'default' : 'secondary'}>
-                  {chip.status}
-                </Badge>
+          <div>
+            <h3 className="text-lg font-medium mb-3">Selecionar Chips para Aquecimento</h3>
+            <p className="text-sm text-muted-foreground mb-4">
+              Escolha pelo menos 2 chips ativos para iniciar o aquecimento. Os chips selecionados irão trocar mensagens entre si para manter a conexão aquecida.
+            </p>
+            
+            {chips.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                <Thermometer className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                <p>Nenhum chip ativo encontrado</p>
+                <p className="text-sm">Conecte alguns chips primeiro para usar o aquecimento</p>
               </div>
-            ))}
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {chips.map((chip) => (
+                  <div key={chip.id} className="flex items-center space-x-3 p-4 border rounded-lg hover:bg-muted/50 transition-colors">
+                    <Checkbox
+                      id={chip.id}
+                      checked={selectedChips.includes(chip.id)}
+                      onCheckedChange={(checked) => handleChipSelection(chip.id, checked as boolean)}
+                      disabled={isWarming}
+                    />
+                    <label
+                      htmlFor={chip.id}
+                      className="flex-1 text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                    >
+                      <div>
+                        <div className="font-medium">{chip.name}</div>
+                        <div className="text-muted-foreground text-xs">{chip.phone_number}</div>
+                      </div>
+                    </label>
+                    <Badge variant={chip.status === 'active' ? 'default' : 'secondary'}>
+                      {chip.status}
+                    </Badge>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {selectedChips.length > 0 && (
-            <div className="text-sm text-muted-foreground">
-              {selectedChips.length} chip{selectedChips.length !== 1 ? 's' : ''} selecionado{selectedChips.length !== 1 ? 's' : ''}
+            <div className="bg-muted/50 p-3 rounded-lg">
+              <div className="text-sm font-medium text-foreground">
+                {selectedChips.length} chip{selectedChips.length !== 1 ? 's' : ''} selecionado{selectedChips.length !== 1 ? 's' : ''}
+              </div>
+              {selectedChips.length < 2 && (
+                <div className="text-xs text-orange-600 mt-1">
+                  Selecione pelo menos 2 chips para iniciar o aquecimento
+                </div>
+              )}
             </div>
           )}
         </div>
