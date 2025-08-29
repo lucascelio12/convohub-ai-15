@@ -370,12 +370,12 @@ export default function Chips() {
               </div>
               <div className="space-y-2">
                 <Label>Fila (opcional)</Label>
-                <Select value={formData.queue_id} onValueChange={(value) => setFormData(prev => ({...prev, queue_id: value}))}>
+                <Select value={formData.queue_id} onValueChange={(value) => setFormData(prev => ({...prev, queue_id: value === 'none' ? '' : value}))}>
                   <SelectTrigger>
                     <SelectValue placeholder="Selecione uma fila" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">Nenhuma fila</SelectItem>
+                    <SelectItem value="none">Nenhuma fila</SelectItem>
                     {queues.map((queue) => (
                       <SelectItem key={queue.id} value={queue.id}>
                         <div className="flex items-center gap-2">
@@ -632,14 +632,14 @@ export default function Chips() {
             <div className="space-y-2">
               <Label>Fila (opcional)</Label>
               <Select 
-                value={editingChip?.queue_id || ''} 
-                onValueChange={(value) => setEditingChip(prev => prev ? {...prev, queue_id: value} : null)}
+                value={editingChip?.queue_id || 'none'} 
+                onValueChange={(value) => setEditingChip(prev => prev ? {...prev, queue_id: value === 'none' ? '' : value} : null)}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Selecione uma fila" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Nenhuma fila</SelectItem>
+                  <SelectItem value="none">Nenhuma fila</SelectItem>
                   {queues.map((queue) => (
                     <SelectItem key={queue.id} value={queue.id}>
                       <div className="flex items-center gap-2">
