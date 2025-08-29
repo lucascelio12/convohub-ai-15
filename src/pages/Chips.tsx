@@ -22,16 +22,29 @@ interface Chip {
   phone_number: string;
   status: string;
   qr_code?: string;
+  queue_id?: string;
   created_at: string;
   updated_at: string;
   created_by?: string;
+  queues?: {
+    name: string;
+    color?: string;
+  } | null;
+}
+
+interface Queue {
+  id: string;
+  name: string;
+  description?: string;
+  color?: string;
 }
 
 export default function Chips() {
   const [chips, setChips] = useState<Chip[]>([]);
+  const [queues, setQueues] = useState<Queue[]>([]);
   const [loading, setLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [formData, setFormData] = useState({ name: '', phone_number: '' });
+  const [formData, setFormData] = useState({ name: '', phone_number: '', queue_id: '' });
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [generatingQR, setGeneratingQR] = useState<string | null>(null);
@@ -58,13 +71,14 @@ export default function Chips() {
 
   useEffect(() => {
     fetchChips();
+    fetchQueues();
   }, []);
 
   const fetchChips = async () => {
     try {
       const { data, error } = await supabase
         .from('chips')
-        .select('*')
+        .select('*, queues(name, color)')
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -77,6 +91,25 @@ export default function Chips() {
       });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchQueues = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('queues')
+        .select('id, name, description, color')
+        .eq('active', true)
+        .order('name');
+
+      if (error) throw error;
+      setQueues(data || []);
+    } catch (error: any) {
+      toast({
+        title: 'Erro',
+        description: 'Erro ao carregar filas: ' + error.message,
+        variant: 'destructive',
+      });
     }
   };
 
@@ -152,7 +185,7 @@ export default function Chips() {
     if (!formData.name.trim() || !formData.phone_number.trim()) {
       toast({
         title: 'Erro',
-        description: 'Preencha todos os campos.',
+        description: 'Preencha todos os campos obrigatórios.',
         variant: 'destructive',
       });
       return;
@@ -164,6 +197,7 @@ export default function Chips() {
         .insert({
           name: formData.name,
           phone_number: formData.phone_number,
+          queue_id: formData.queue_id || null,
           status: 'inactive',
           created_by: user?.id
         });
@@ -176,7 +210,7 @@ export default function Chips() {
       });
 
       setIsDialogOpen(false);
-      setFormData({ name: '', phone_number: '' });
+      setFormData({ name: '', phone_number: '', queue_id: '' });
       fetchChips();
     } catch (error: any) {
       toast({
@@ -191,7 +225,7 @@ export default function Chips() {
     if (!editingChip || !editingChip.name.trim() || !editingChip.phone_number.trim()) {
       toast({
         title: 'Erro',
-        description: 'Preencha todos os campos.',
+        description: 'Preencha todos os campos obrigatórios.',
         variant: 'destructive',
       });
       return;
@@ -202,7 +236,8 @@ export default function Chips() {
         .from('chips')
         .update({
           name: editingChip.name,
-          phone_number: editingChip.phone_number
+          phone_number: editingChip.phone_number,
+          queue_id: editingChip.queue_id || null
         })
         .eq('id', editingChip.id);
 
@@ -333,6 +368,28 @@ export default function Chips() {
                   onChange={(e) => setFormData(prev => ({...prev, phone_number: e.target.value}))}
                 />
               </div>
+              <div className="space-y-2">
+                <Label>Fila (opcional)</Label>
+                <Select value={formData.queue_id} onValueChange={(value) => setFormData(prev => ({...prev, queue_id: value}))}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione uma fila" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">Nenhuma fila</SelectItem>
+                    {queues.map((queue) => (
+                      <SelectItem key={queue.id} value={queue.id}>
+                        <div className="flex items-center gap-2">
+                          <div 
+                            className="w-3 h-3 rounded-full" 
+                            style={{ backgroundColor: queue.color || '#3B82F6' }}
+                          />
+                          {queue.name}
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
               <div className="flex gap-2">
                 <Button variant="outline" onClick={() => setIsDialogOpen(false)} className="flex-1">Cancelar</Button>
                 <Button onClick={createChip} className="flex-1">Criar Chip</Button>
@@ -392,6 +449,22 @@ export default function Chips() {
               <CardContent className="space-y-4">
                 <div>
                   <p className="text-sm text-muted-foreground">Telefone: {chip.phone_number}</p>
+                  {chip.queues && (
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="text-xs text-muted-foreground">Fila:</span>
+                      <Badge 
+                        variant="outline" 
+                        className="text-xs"
+                        style={{ 
+                          backgroundColor: chip.queues.color + '20', 
+                          borderColor: chip.queues.color,
+                          color: chip.queues.color 
+                        }}
+                      >
+                        {chip.queues.name}
+                      </Badge>
+                    </div>
+                  )}
                   <p className="text-xs text-muted-foreground">Criado: {new Date(chip.created_at).toLocaleDateString('pt-BR')}</p>
                   <p className="text-xs text-muted-foreground">Status Real: {chipWithRealStatus.realStatus}</p>
                 </div>
@@ -555,6 +628,31 @@ export default function Chips() {
                 value={editingChip?.phone_number || ''}
                 onChange={(e) => setEditingChip(prev => prev ? {...prev, phone_number: e.target.value} : null)}
               />
+            </div>
+            <div className="space-y-2">
+              <Label>Fila (opcional)</Label>
+              <Select 
+                value={editingChip?.queue_id || ''} 
+                onValueChange={(value) => setEditingChip(prev => prev ? {...prev, queue_id: value} : null)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione uma fila" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">Nenhuma fila</SelectItem>
+                  {queues.map((queue) => (
+                    <SelectItem key={queue.id} value={queue.id}>
+                      <div className="flex items-center gap-2">
+                        <div 
+                          className="w-3 h-3 rounded-full" 
+                          style={{ backgroundColor: queue.color || '#3B82F6' }}
+                        />
+                        {queue.name}
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="flex gap-2">
               <Button 
