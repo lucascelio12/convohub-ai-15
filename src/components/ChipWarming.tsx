@@ -48,16 +48,18 @@ export function ChipWarming() {
 
   const fetchChips = async () => {
     try {
+      console.log('🔍 ChipWarming - Buscando chips ativos...');
       const { data, error } = await supabase
         .from('chips')
         .select('id, name, phone_number, status')
         .eq('status', 'active');
 
+      console.log('📊 ChipWarming - Resultado:', { data, error });
       if (error) throw error;
       console.log('Chips carregados:', data);
       setChips(data || []);
     } catch (error) {
-      console.error('Erro ao buscar chips:', error);
+      console.error('❌ ChipWarming - Erro ao buscar chips:', error);
       toast({
         title: 'Erro',
         description: 'Erro ao carregar chips',

@@ -76,14 +76,18 @@ export default function Chips() {
 
   const fetchChips = async () => {
     try {
+      console.log('🔍 Buscando chips no Supabase...');
       const { data, error } = await supabase
         .from('chips')
         .select('*, queues(name, color)')
         .order('created_at', { ascending: false });
 
+      console.log('📊 Resultado da query chips:', { data, error });
       if (error) throw error;
+      console.log('✅ Chips encontrados:', data?.length || 0);
       setChips(data || []);
     } catch (error: any) {
+      console.error('❌ Erro ao buscar chips:', error);
       toast({
         title: 'Erro',
         description: 'Erro ao carregar chips: ' + error.message,
