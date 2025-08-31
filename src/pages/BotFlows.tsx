@@ -22,9 +22,11 @@ import {
   Settings,
   GitBranch,
   Webhook,
-  Bot as BotIcon
+  Bot as BotIcon,
+  TestTube
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/contexts/AuthContext';
 
 // Tipos para os nós
 type NodeType = 'trigger' | 'action' | 'condition' | 'webhook' | 'gpt' | 'n8n' | 'typebot';
@@ -47,6 +49,8 @@ interface BotFlow {
   edges: Edge[];
   created_at: string;
   updated_at: string;
+  created_by: string;
+  company_id: string;
 }
 
 const nodeTypes = {
@@ -113,6 +117,7 @@ const initialEdges: Edge[] = [];
 
 const BotFlows = () => {
   const { toast } = useToast();
+  const { user, profile } = useAuth();
   const [flows, setFlows] = useState<BotFlow[]>([]);
   const [selectedFlow, setSelectedFlow] = useState<BotFlow | null>(null);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
@@ -140,28 +145,65 @@ const BotFlows = () => {
 
   const loadFlows = async () => {
     try {
-      // Mock data for now
-      setFlows([]);
+      const { data, error } = await supabase
+        .from('bot_flows')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      
+      // Converter os dados do banco para o formato esperado
+      const formattedFlows = (data || []).map(flow => ({
+        ...flow,
+        nodes: Array.isArray(flow.nodes) ? (flow.nodes as unknown) as FlowNode[] : [],
+        edges: Array.isArray(flow.edges) ? (flow.edges as unknown) as Edge[] : []
+      }));
+      
+      setFlows(formattedFlows);
     } catch (error) {
       console.error('Erro ao carregar fluxos:', error);
+      toast({
+        title: "Erro",
+        description: "Falha ao carregar fluxos",
+        variant: "destructive",
+      });
     }
   };
 
   const createFlow = async () => {
+    if (!user || !profile?.company_id) {
+      toast({
+        title: "Erro",
+        description: "Usuário não autenticado",
+        variant: "destructive",
+      });
+      return;
+    }
+
     try {
-      // Mock creation for now
-      const newFlow: BotFlow = {
-        id: `flow-${Date.now()}`,
-        name: newFlowData.name,
-        description: newFlowData.description || '',
-        active: false,
-        nodes: [],
-        edges: [],
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
+      const { data, error } = await supabase
+        .from('bot_flows')
+        .insert({
+          name: newFlowData.name,
+          description: newFlowData.description || '',
+          active: false,
+          nodes: [],
+          edges: [],
+          created_by: user.id,
+          company_id: profile.company_id
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      const formattedFlow = {
+        ...data,
+        nodes: Array.isArray(data.nodes) ? (data.nodes as unknown) as FlowNode[] : [],
+        edges: Array.isArray(data.edges) ? (data.edges as unknown) as Edge[] : []
       };
 
-      setFlows(prev => [newFlow, ...prev]);
+      setFlows(prev => [formattedFlow, ...prev]);
       setNewFlowData({ name: '', description: '' });
       setIsCreateDialogOpen(false);
       toast({
@@ -182,7 +224,17 @@ const BotFlows = () => {
     if (!selectedFlow) return;
 
     try {
-      // Mock save for now
+      const { error } = await supabase
+        .from('bot_flows')
+        .update({
+          nodes: JSON.parse(JSON.stringify(nodes)),
+          edges: JSON.parse(JSON.stringify(edges)),
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', selectedFlow.id);
+
+      if (error) throw error;
+
       setFlows(prev => prev.map(f => 
         f.id === selectedFlow.id 
           ? { ...f, nodes, edges, updated_at: new Date().toISOString() }
@@ -262,6 +314,13 @@ const BotFlows = () => {
 
   const deleteFlow = async (flowId: string) => {
     try {
+      const { error } = await supabase
+        .from('bot_flows')
+        .delete()
+        .eq('id', flowId);
+
+      if (error) throw error;
+
       setFlows(prev => prev.filter(f => f.id !== flowId));
       if (selectedFlow?.id === flowId) {
         setSelectedFlow(null);
@@ -285,6 +344,13 @@ const BotFlows = () => {
 
   const toggleFlowActive = async (flowId: string, active: boolean) => {
     try {
+      const { error } = await supabase
+        .from('bot_flows')
+        .update({ active })
+        .eq('id', flowId);
+
+      if (error) throw error;
+
       setFlows(prev => prev.map(f => 
         f.id === flowId ? { ...f, active } : f
       ));
@@ -298,6 +364,58 @@ const BotFlows = () => {
       toast({
         title: "Erro",
         description: "Falha ao alterar status do fluxo",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const testFlow = (flow: BotFlow) => {
+    if (!flow.nodes.length) {
+      toast({
+        title: "Atenção",
+        description: "O fluxo não possui nós para testar",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Testar fluxo com uma mensagem de exemplo
+    const testMessage = "oi";
+    
+    toast({
+      title: "Teste iniciado",
+      description: "Executando fluxo com mensagem de teste: 'oi'",
+    });
+
+    // Executar o fluxo via edge function
+    executeFlowTest(flow.id, testMessage);
+  };
+
+  const executeFlowTest = async (flowId: string, message: string) => {
+    if (!user) return;
+
+    try {
+      const { data, error } = await supabase.functions.invoke('execute-bot-flow', {
+        body: {
+          flowId,
+          message,
+          userId: user.id
+        }
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: "Teste concluído",
+        description: `Fluxo executado: ${data.result?.executedNodes?.length || 0} nós processados`,
+      });
+      
+      console.log('Resultado do teste:', data);
+    } catch (error) {
+      console.error('Erro no teste do fluxo:', error);
+      toast({
+        title: "Erro no teste",
+        description: "Falha ao executar o fluxo",
         variant: "destructive",
       });
     }
@@ -552,10 +670,19 @@ const BotFlows = () => {
                       </DialogContent>
                     </Dialog>
                     
-                    <Button onClick={saveFlow} size="sm">
-                      <Save className="h-4 w-4 mr-1" />
-                      Salvar
-                    </Button>
+                     <Button onClick={saveFlow} size="sm">
+                       <Save className="h-4 w-4 mr-1" />
+                       Salvar
+                     </Button>
+                     
+                     <Button 
+                       onClick={() => testFlow(selectedFlow)} 
+                       size="sm" 
+                       variant="outline"
+                     >
+                       <TestTube className="h-4 w-4 mr-1" />
+                       Testar
+                     </Button>
                   </div>
                 </div>
               </CardHeader>

@@ -9,6 +9,7 @@ interface Profile {
   email: string;
   role: 'admin' | 'manager' | 'agent';
   avatar_url?: string;
+  company_id: string;
 }
 
 interface AuthContextType {
