@@ -98,6 +98,25 @@ class WhatsAppService {
       throw error;
     }
   }
+
+  async getQrCode(chipId: string): Promise<string | null> {
+    try {
+      const response = await fetch(`${this.baseUrl}/status?chipId=${encodeURIComponent(chipId)}`, {
+        method: 'GET'
+      });
+
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.error || 'Erro ao obter status');
+      }
+
+      return data?.qrCode || null;
+    } catch (error) {
+      console.error('Erro ao obter QR Code:', error);
+      throw error;
+    }
+  }
 }
 
 export const whatsappService = new WhatsAppService();

@@ -15,6 +15,7 @@ import { useMultipleChips } from '@/hooks/useMultipleChips';
 import { useWhatsAppRealTime } from '@/hooks/useWhatsAppRealTime';
 import { ChipStatusIndicator } from '@/components/ChipStatusIndicator';
 import { ChipWarming } from '@/components/ChipWarming';
+import { whatsappService } from '@/services/whatsapp';
 
 interface Chip {
   id: string;
@@ -62,7 +63,6 @@ export default function Chips() {
     connections, 
     connectChip, 
     disconnectChip, 
-    getQrCode, 
     sendMessage,
     getChipStatus 
   } = useMultipleChips();
@@ -149,7 +149,7 @@ export default function Chips() {
 
   const viewQRCode = async (chipId: string) => {
     try {
-      const qrCode = await getQrCode(chipId);
+      const qrCode = await whatsappService.getQrCode(chipId);
       if (qrCode) {
         setSelectedChipQR(qrCode);
         setQrDialogOpen(true);
