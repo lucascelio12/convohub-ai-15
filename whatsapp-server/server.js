@@ -49,6 +49,13 @@ class WhatsAppManager {
     try {
       console.log(`[${this.chipId}] Inicializando cliente WhatsApp...`);
       
+      // Verificar se existe sessão corrompida
+      const authExists = await fs.pathExists(this.authDir);
+      if (authExists) {
+        console.log(`[${this.chipId}] Sessão anterior encontrada, removendo para gerar novo QR...`);
+        await fs.remove(this.authDir);
+      }
+      
       await fs.ensureDir(this.authDir);
 
       this.client = new Client({
@@ -61,34 +68,60 @@ class WhatsAppManager {
           args: [
             '--no-sandbox',
             '--disable-setuid-sandbox',
-            '--disable-dev-shm-usage'
+            '--disable-dev-shm-usage',
+            '--disable-web-security',
+            '--disable-features=VizDisplayCompositor'
           ]
         }
       });
 
       this.setupEventHandlers();
+      
+      console.log(`[${this.chipId}] Iniciando inicialização do cliente...`);
       await this.client.initialize();
+      console.log(`[${this.chipId}] Cliente inicializado com sucesso`);
       
     } catch (error) {
-      console.error(`[${this.chipId}] Erro ao inicializar:`, error);
+      console.error(`[${this.chipId}] Erro ao inicializar:`, error.message);
+      console.error(`[${this.chipId}] Stack trace:`, error.stack);
       this.updateStatus('error');
       throw error;
     }
   }
 
   setupEventHandlers() {
+    // Log de todos os eventos para debug
+    this.client.on('loading_screen', (percent, message) => {
+      console.log(`[${this.chipId}] Loading: ${percent}% - ${message}`);
+    });
+
+    this.client.on('authenticated', () => {
+      console.log(`[${this.chipId}] ✅ Autenticado com sucesso`);
+    });
+
+    this.client.on('auth_failure', (msg) => {
+      console.error(`[${this.chipId}] ❌ Falha na autenticação:`, msg);
+    });
+
     this.client.on('qr', async (qr) => {
-      console.log(`[${this.chipId}] QR Code gerado`);
+      console.log(`[${this.chipId}] 📱 QR Code gerado!`);
+      console.log(`[${this.chipId}] 📋 QR String:`, qr.substring(0, 50) + '...');
+      
       try {
         this.qrCode = await QRCode.toDataURL(qr);
         qrCodes.set(this.chipId, this.qrCode);
         this.updateStatus('qr_ready');
+        
+        console.log(`[${this.chipId}] 🎯 QR Code convertido para DataURL e armazenado`);
+        console.log(`[${this.chipId}] 📡 Enviando QR via WebSocket...`);
         
         io.emit('qr_updated', { 
           chipId: this.chipId, 
           qrCode: this.qrCode,
           status: 'qr_ready'
         });
+
+        console.log(`[${this.chipId}] ⏳ Aguardando leitura do QR Code...`);
 
       } catch (error) {
         console.error(`[${this.chipId}] Erro ao gerar QR:`, error);
@@ -110,7 +143,7 @@ class WhatsAppManager {
     });
 
     this.client.on('disconnected', async (reason) => {
-      console.log(`[${this.chipId}] Desconectado:`, reason);
+      console.log(`[${this.chipId}] 🔌 Desconectado:`, reason);
       this.isReady = false;
       this.updateStatus('disconnected');
       
@@ -120,7 +153,16 @@ class WhatsAppManager {
         reason
       });
 
-      setTimeout(() => this.initialize(), 10000);
+      // Limpar sessão corrompida antes de reconectar
+      if (reason === 'NAVIGATION') {
+        console.log(`[${this.chipId}] 🧹 Limpando sessão corrompida...`);
+        await fs.remove(this.authDir);
+      }
+
+      setTimeout(() => {
+        console.log(`[${this.chipId}] 🔄 Tentando reconectar em 10 segundos...`);
+        this.initialize();
+      }, 10000);
     });
 
     this.client.on('message', async (message) => {
@@ -198,13 +240,23 @@ app.post('/whatsapp/connect', async (req, res) => {
       return res.status(400).json({ error: 'chipId é obrigatório' });
     }
 
+    console.log(`🚀 Solicitação de conexão para chip: ${chipId}`);
+
     if (sessions.has(chipId)) {
       const session = sessions.get(chipId);
       if (session.isReady) {
+        console.log(`✅ Chip ${chipId} já está conectado`);
         return res.json({
           success: true,
           message: 'Chip já está conectado',
           status: 'connected'
+        });
+      } else {
+        console.log(`🔄 Chip ${chipId} já está inicializando...`);
+        return res.json({
+          success: true,
+          message: 'Chip já está inicializando',
+          status: 'connecting'
         });
       }
     }
@@ -212,8 +264,11 @@ app.post('/whatsapp/connect', async (req, res) => {
     const manager = new WhatsAppManager(chipId);
     sessions.set(chipId, manager);
     
+    console.log(`🎯 Iniciando nova sessão para chip: ${chipId}`);
+    
     manager.initialize().catch(error => {
-      console.error(`Erro ao inicializar ${chipId}:`, error);
+      console.error(`❌ Erro crítico ao inicializar ${chipId}:`, error.message);
+      console.error(`Stack trace:`, error.stack);
     });
 
     res.json({
