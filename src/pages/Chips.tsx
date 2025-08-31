@@ -297,12 +297,22 @@ export default function Chips() {
     const realConnection = connections.find(conn => conn.chipId === chip.id);
     const wsStatus = connectionStatuses.find(status => status.chipId === chip.id);
     
-    return {
+    const chipWithStatus = {
       ...chip,
       realStatus: realConnection?.status || wsStatus?.status || 'disconnected',
       isReady: realConnection?.isReady || wsStatus?.isReady || false,
       hasQrCode: realConnection?.hasQrCode || false
     };
+    
+    console.log(`🔍 Chip ${chip.id} status:`, {
+      realConnection,
+      wsStatus,
+      hasQrCode: chipWithStatus.hasQrCode,
+      realStatus: chipWithStatus.realStatus,
+      shouldShowQR: chipWithStatus.hasQrCode && chipWithStatus.realStatus === 'qr_ready'
+    });
+    
+    return chipWithStatus;
   };
 
   const getStatusColor = (status: string) => {
@@ -486,6 +496,7 @@ export default function Chips() {
                       </Button>
                     )}
                     
+                    {/* Condição original */}
                     {chipWithRealStatus.hasQrCode && chipWithRealStatus.realStatus === 'qr_ready' && (
                       <Button 
                         size="sm" 
@@ -494,6 +505,18 @@ export default function Chips() {
                       >
                         <Eye className="h-3 w-3 mr-1" />
                         Ver QR
+                      </Button>
+                    )}
+                    
+                    {/* Condição temporária para teste - mostra sempre quando há conexão */}
+                    {!chipWithRealStatus.hasQrCode && chipWithRealStatus.realStatus !== 'disconnected' && (
+                      <Button 
+                        size="sm" 
+                        variant="outline"
+                        onClick={() => viewQRCode(chip.id)}
+                      >
+                        <Eye className="h-3 w-3 mr-1" />
+                        Testar QR
                       </Button>
                     )}
                     
