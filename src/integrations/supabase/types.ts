@@ -14,6 +14,53 @@ export type Database = {
   }
   public: {
     Tables: {
+      bot_flows: {
+        Row: {
+          active: boolean
+          company_id: string | null
+          created_at: string
+          created_by: string
+          description: string | null
+          edges: Json | null
+          id: string
+          name: string
+          nodes: Json | null
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          company_id?: string | null
+          created_at?: string
+          created_by: string
+          description?: string | null
+          edges?: Json | null
+          id?: string
+          name: string
+          nodes?: Json | null
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          company_id?: string | null
+          created_at?: string
+          created_by?: string
+          description?: string | null
+          edges?: Json | null
+          id?: string
+          name?: string
+          nodes?: Json | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bot_flows_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       campaign_chips: {
         Row: {
           campaign_id: string

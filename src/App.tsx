@@ -16,6 +16,7 @@ import Companies from "./pages/Companies";
 import Reports from "./pages/Reports";
 import AdvancedReports from "./pages/AdvancedReports";
 import Settings from "./pages/Settings";
+import BotFlows from "./pages/BotFlows";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -43,6 +44,7 @@ const App = () => (
                 <Route path="companies" element={<Companies />} />
                 <Route path="reports" element={<Reports />} />
                 <Route path="advanced-reports" element={<AdvancedReports />} />
+                <Route path="bot-flows" element={<BotFlows />} />
                 <Route path="settings" element={<Settings />} />
                 {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               </Route>

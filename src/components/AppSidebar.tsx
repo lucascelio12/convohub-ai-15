@@ -10,7 +10,8 @@ import {
   Settings,
   LogOut,
   User,
-  TrendingUp
+  TrendingUp,
+  Bot
 } from "lucide-react";
 import {
   Sidebar,
@@ -33,6 +34,7 @@ const menuItems = [
   { title: "Filas", url: "/queues", icon: Layers },
   { title: "Chips", url: "/chips", icon: Smartphone },
   { title: "Campanhas", url: "/campaigns", icon: Send },
+  { title: "Fluxos de Bot", url: "/bot-flows", icon: Bot },
   { title: "Relatórios", url: "/reports", icon: BarChart3 },
   { title: "Relatórios Avançados", url: "/advanced-reports", icon: TrendingUp },
   { title: "Configurações", url: "/settings", icon: Settings },
@@ -75,7 +77,7 @@ export function AppSidebar() {
     
     // User padrão tem acesso a funcionalidades básicas + usuários e empresas
     if ((profile as any).role === 'user') {
-      return ['conversations', 'queues', 'chips', 'campaigns', 'reports', 'users', 'companies'].some(allowed => item.url.includes(allowed));
+      return ['conversations', 'queues', 'chips', 'campaigns', 'bot-flows', 'reports', 'users', 'companies'].some(allowed => item.url.includes(allowed));
     }
     
     return false;
