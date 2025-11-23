@@ -2,7 +2,8 @@ import React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { WebhookIntegrations } from '@/components/WebhookIntegrations';
-import { Settings as SettingsIcon, Webhook, Bell, Shield } from 'lucide-react';
+import { Settings as SettingsIcon, Webhook, Bell, Shield, Radio } from 'lucide-react';
+import EvolutionApiSettings from './EvolutionApiSettings';
 
 const Settings = () => {
   return (
@@ -15,8 +16,12 @@ const Settings = () => {
         </div>
       </div>
       
-      <Tabs defaultValue="webhooks" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-4">
+      <Tabs defaultValue="evolution" className="space-y-6">
+        <TabsList className="grid w-full grid-cols-5">
+          <TabsTrigger value="evolution" className="flex items-center gap-2">
+            <Radio className="h-4 w-4" />
+            Evolution API
+          </TabsTrigger>
           <TabsTrigger value="webhooks" className="flex items-center gap-2">
             <Webhook className="h-4 w-4" />
             Integrações
@@ -34,6 +39,10 @@ const Settings = () => {
             Geral
           </TabsTrigger>
         </TabsList>
+
+        <TabsContent value="evolution">
+          <EvolutionApiSettings />
+        </TabsContent>
 
         <TabsContent value="webhooks">
           <WebhookIntegrations />
