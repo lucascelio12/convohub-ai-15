@@ -372,6 +372,44 @@ export type Database = {
           },
         ]
       }
+      evolution_api_configs: {
+        Row: {
+          active: boolean
+          api_key: string
+          api_url: string
+          company_id: string | null
+          created_at: string
+          id: string
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          api_key: string
+          api_url: string
+          company_id?: string | null
+          created_at?: string
+          id?: string
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          api_key?: string
+          api_url?: string
+          company_id?: string | null
+          created_at?: string
+          id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "evolution_api_configs_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       messages: {
         Row: {
           content: string
