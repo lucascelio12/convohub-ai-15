@@ -11,8 +11,6 @@ import { Plus, Smartphone, Wifi, WifiOff, Download, Trash2, RotateCcw, Settings,
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
-import { useMultipleChips } from '@/hooks/useMultipleChips';
-import { useWhatsAppRealTime } from '@/hooks/useWhatsAppRealTime';
 import { ChipStatusIndicator } from '@/components/ChipStatusIndicator';
 import { ChipWarming } from '@/components/ChipWarming';
 import { whatsappService } from '@/services/whatsapp';
@@ -57,21 +55,31 @@ export default function Chips() {
   const [chipToDelete, setChipToDelete] = useState<string | null>(null);
   const { toast } = useToast();
   const { user } = useAuth();
-  
-  // Hooks para conexões reais
-  const { 
-    connections, 
-    connectChip, 
-    disconnectChip, 
-    sendMessage,
-    getChipStatus 
-  } = useMultipleChips();
-  
-  const { connected: wsConnected, connectionStatuses } = useWhatsAppRealTime();
 
   useEffect(() => {
     fetchChips();
     fetchQueues();
+    
+    // Configurar Supabase Realtime para mudanças nos chips
+    const channel = supabase
+      .channel('chips-changes')
+      .on(
+        'postgres_changes',
+        { 
+          event: '*', 
+          schema: 'public', 
+          table: 'chips'
+        },
+        (payload) => {
+          console.log('🔄 Chip atualizado via Realtime:', payload);
+          fetchChips(); // Recarregar lista quando houver mudanças
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   const fetchChips = async () => {
@@ -120,26 +128,24 @@ export default function Chips() {
   const generateQRCode = async (chipId: string) => {
     setGeneratingQR(chipId);
     try {
-      console.log('Iniciando conexão para chip:', chipId);
+      console.log('🔌 Iniciando conexão para chip:', chipId);
       
-      // Conectar via servidor real ou simulado
-      await connectChip(chipId);
+      const result = await whatsappService.startConnection(chipId);
       
-      toast({
-        title: 'Sucesso',
-        description: 'Processo de conexão iniciado! O QR Code aparecerá em instantes.',
-      });
-
-      // Para simulação local, forçar atualização do status após um tempo
-      setTimeout(() => {
-        console.log('Verificando status do chip após conexão:', chipId);
-      }, 3000);
+      if (result.success) {
+        toast({
+          title: 'Sucesso',
+          description: 'Conexão iniciada! O QR Code aparecerá em instantes.',
+        });
+      } else {
+        throw new Error(result.error || 'Falha ao iniciar conexão');
+      }
       
     } catch (error: any) {
-      console.error('Erro ao conectar chip:', error);
+      console.error('❌ Erro ao conectar chip:', error);
       toast({
         title: 'Erro',
-        description: 'Erro ao iniciar conexão: ' + error.message,
+        description: error.message || 'Erro ao iniciar conexão',
         variant: 'destructive',
       });
     } finally {
@@ -171,15 +177,20 @@ export default function Chips() {
 
   const handleDisconnect = async (chipId: string) => {
     try {
-      await disconnectChip(chipId);
-      toast({
-        title: 'Sucesso',
-        description: 'Chip desconectado com sucesso.',
-      });
+      const result = await whatsappService.simulateScan(chipId);
+      
+      if (result.success) {
+        toast({
+          title: 'Sucesso',
+          description: 'Chip desconectado com sucesso.',
+        });
+      } else {
+        throw new Error(result.error || 'Falha ao desconectar');
+      }
     } catch (error: any) {
       toast({
         title: 'Erro',
-        description: 'Erro ao desconectar chip: ' + error.message,
+        description: error.message || 'Erro ao desconectar chip',
         variant: 'destructive',
       });
     }
@@ -292,34 +303,21 @@ export default function Chips() {
     }
   };
 
-  // Combinar dados do Supabase com status real das conexões
   const getChipWithRealStatus = (chip: Chip) => {
-    const realConnection = connections.find(conn => conn.chipId === chip.id);
-    const wsStatus = connectionStatuses.find(status => status.chipId === chip.id);
-    
-    const chipWithStatus = {
+    return {
       ...chip,
-      realStatus: realConnection?.status || wsStatus?.status || 'disconnected',
-      isReady: realConnection?.isReady || wsStatus?.isReady || false,
-      hasQrCode: realConnection?.hasQrCode || false
+      realStatus: chip.status,
+      isReady: chip.status === 'connected',
+      hasQrCode: !!chip.qr_code
     };
-    
-    console.log(`🔍 Chip ${chip.id} status:`, {
-      realConnection,
-      wsStatus,
-      hasQrCode: chipWithStatus.hasQrCode,
-      realStatus: chipWithStatus.realStatus,
-      shouldShowQR: chipWithStatus.hasQrCode && chipWithStatus.realStatus === 'qr_ready'
-    });
-    
-    return chipWithStatus;
   };
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'active': return 'bg-green-100 text-green-800';
-      case 'inactive': return 'bg-gray-100 text-gray-800';
+      case 'connected': return 'bg-green-100 text-green-800';
+      case 'disconnected': return 'bg-gray-100 text-gray-800';
       case 'connecting': return 'bg-yellow-100 text-yellow-800';
+      case 'waiting_qr': return 'bg-blue-100 text-blue-800';
       case 'error': return 'bg-red-100 text-red-800';
       default: return 'bg-gray-100 text-gray-800';
     }
@@ -327,9 +325,10 @@ export default function Chips() {
 
   const getStatusIcon = (status: string) => {
     switch (status) {
-      case 'active': return <Wifi className="h-4 w-4 text-green-600" />;
-      case 'inactive': return <WifiOff className="h-4 w-4 text-gray-600" />;
+      case 'connected': return <Wifi className="h-4 w-4 text-green-600" />;
+      case 'disconnected': return <WifiOff className="h-4 w-4 text-gray-600" />;
       case 'connecting': return <Wifi className="h-4 w-4 text-yellow-600 animate-pulse" />;
+      case 'waiting_qr': return <Smartphone className="h-4 w-4 text-blue-600 animate-pulse" />;
       case 'error': return <WifiOff className="h-4 w-4 text-red-600" />;
       default: return <WifiOff className="h-4 w-4 text-gray-600" />;
     }
@@ -451,11 +450,6 @@ export default function Chips() {
                       isReady={chipWithRealStatus.isReady}
                       size="sm"
                     />
-                    {!wsConnected && (
-                      <Badge variant="outline" className="text-xs">
-                        Offline
-                      </Badge>
-                    )}
                   </div>
                 </div>
               </CardHeader>
@@ -571,7 +565,7 @@ export default function Chips() {
                 </div>
 
                 {/* Status da conexão real */}
-                {wsConnected && chipWithRealStatus.realStatus === 'qr_ready' && (
+                {chipWithRealStatus.realStatus === 'waiting_qr' && chipWithRealStatus.hasQrCode && (
                   <div className="border rounded-lg p-3 bg-blue-50 border-blue-200">
                     <p className="text-sm text-blue-800 text-center">
                       📱 QR Code disponível! Clique em "Ver QR" para escanear.
