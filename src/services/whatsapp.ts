@@ -1,3 +1,5 @@
+import { supabase } from '@/integrations/supabase/client';
+
 interface WhatsAppResponse {
   success: boolean;
   qrCode?: string;
@@ -8,113 +10,132 @@ interface WhatsAppResponse {
 }
 
 class WhatsAppService {
-  private baseUrl = 'http://localhost:3001/whatsapp';
+  private async getCompanyId(): Promise<string> {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error('Usuário não autenticado');
+    
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('company_id')
+      .eq('user_id', user.id)
+      .single();
+    
+    if (!profile?.company_id) throw new Error('Empresa não encontrada');
+    return profile.company_id;
+  }
 
-  async startConnection(chipId: string, authToken: string): Promise<WhatsAppResponse> {
+  async startConnection(chipId: string, authToken?: string): Promise<WhatsAppResponse> {
     try {
-      const response = await fetch(`${this.baseUrl}/connect`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ chipId })
+      const companyId = await this.getCompanyId();
+      
+      // Criar instância na Evolution API
+      const { data: createData, error: createError } = await supabase.functions.invoke('evolution-manager', {
+        body: { action: 'create-instance', chipId, companyId }
       });
 
-      const data = await response.json();
+      if (createError) throw createError;
       
-      if (!response.ok) {
-        throw new Error(data.error || 'Erro ao iniciar conexão');
-      }
+      // Conectar instância
+      const { data: connectData, error: connectError } = await supabase.functions.invoke('evolution-manager', {
+        body: { action: 'connect', chipId, companyId }
+      });
 
-      return data;
-    } catch (error) {
-      console.error('Erro ao conectar chip:', error);
-      throw error;
+      if (connectError) throw connectError;
+
+      return {
+        success: true,
+        qrCode: connectData.qrCode,
+        status: connectData.status
+      };
+    } catch (error: any) {
+      console.error("Error starting connection:", error);
+      return { success: false, error: error.message || "Failed to start connection" };
     }
   }
 
-
-  async getStatus(chipId: string, authToken: string): Promise<WhatsAppResponse> {
+  async getStatus(chipId: string, authToken?: string): Promise<WhatsAppResponse> {
     try {
-      const response = await fetch(`${this.baseUrl}/status?chipId=${chipId}`, {
-        method: 'GET'
+      const companyId = await this.getCompanyId();
+      
+      const { data, error } = await supabase.functions.invoke('evolution-manager', {
+        body: { action: 'get-status', chipId, companyId }
       });
 
-      const data = await response.json();
-      
-      if (!response.ok) {
-        throw new Error(data.error || 'Erro ao obter status');
-      }
+      if (error) throw error;
 
-      return data;
-    } catch (error) {
-      console.error('Erro ao obter status:', error);
-      throw error;
+      return {
+        success: true,
+        status: data.status
+      };
+    } catch (error: any) {
+      console.error("Error getting status:", error);
+      return { success: false, error: error.message || "Failed to get status" };
     }
   }
 
-  async simulateScan(chipId: string, authToken: string, scanned: boolean = true): Promise<WhatsAppResponse> {
+  async simulateScan(chipId: string, authToken?: string, scanned: boolean = true): Promise<WhatsAppResponse> {
     try {
-      const response = await fetch(`${this.baseUrl}/disconnect`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ chipId })
+      const companyId = await this.getCompanyId();
+      
+      const { data, error } = await supabase.functions.invoke('evolution-manager', {
+        body: { action: 'disconnect', chipId, companyId }
       });
 
-      const data = await response.json();
-      
-      if (!response.ok) {
-        throw new Error(data.error || 'Erro ao processar scan');
-      }
+      if (error) throw error;
 
-      return data;
-    } catch (error) {
-      console.error('Erro ao processar scan:', error);
-      throw error;
+      return { success: true, message: 'Desconectado com sucesso' };
+    } catch (error: any) {
+      console.error("Error disconnecting:", error);
+      return { success: false, error: error.message || "Failed to disconnect" };
     }
   }
 
-  async sendMessage(chipId: string, phone: string, message: string, authToken: string): Promise<WhatsAppResponse> {
+  async sendMessage(
+    chipId: string,
+    phone: string,
+    message: string,
+    authToken?: string
+  ): Promise<WhatsAppResponse> {
     try {
-      const response = await fetch(`${this.baseUrl}/send-message`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ chipId, phone, message })
+      const companyId = await this.getCompanyId();
+      
+      const { data, error } = await supabase.functions.invoke('evolution-manager', {
+        body: { 
+          action: 'send-message', 
+          chipId, 
+          phoneNumber: phone, 
+          message,
+          companyId 
+        }
       });
 
-      const data = await response.json();
-      
-      if (!response.ok) {
-        throw new Error(data.error || 'Erro ao enviar mensagem');
-      }
+      if (error) throw error;
 
-      return data;
-    } catch (error) {
-      console.error('Erro ao enviar mensagem:', error);
-      throw error;
+      return {
+        success: true,
+        ...data
+      };
+    } catch (error: any) {
+      console.error("Error sending message:", error);
+      return { success: false, error: error.message || "Failed to send message" };
     }
   }
 
   async getQrCode(chipId: string): Promise<string | null> {
     try {
-      const response = await fetch(`${this.baseUrl}/status?chipId=${encodeURIComponent(chipId)}`, {
-        method: 'GET'
-      });
+      // QR code é atualizado via webhook e salvo no banco
+      const { data, error } = await supabase
+        .from('chips')
+        .select('qr_code')
+        .eq('id', chipId)
+        .single();
 
-      const data = await response.json();
+      if (error || !data?.qr_code) return null;
       
-      if (!response.ok) {
-        throw new Error(data.error || 'Erro ao obter status');
-      }
-
-      return data?.qrCode || null;
+      return data.qr_code;
     } catch (error) {
-      console.error('Erro ao obter QR Code:', error);
-      throw error;
+      console.error("Error getting QR code:", error);
+      return null;
     }
   }
 }

@@ -1,1 +1,16 @@
 project_id = "uncjxmnfdidrkakpasjy"
+
+[functions.evolution-webhook]
+verify_jwt = false
+
+[functions.evolution-manager]
+verify_jwt = true
+
+[functions.whatsapp-manager]
+verify_jwt = true
+
+[functions.whatsapp-realtime]
+verify_jwt = true
+
+[functions.execute-bot-flow]
+verify_jwt = true
