@@ -11,7 +11,8 @@ import {
   LogOut,
   User,
   TrendingUp,
-  Bot
+  Bot,
+  Activity
 } from "lucide-react";
 import {
   Sidebar,
@@ -33,6 +34,7 @@ const menuItems = [
   { title: "Conversas", url: "/conversations", icon: MessageSquare },
   { title: "Filas", url: "/queues", icon: Layers },
   { title: "Chips", url: "/chips", icon: Smartphone },
+  { title: "Logs de Chips", url: "/chip-logs", icon: Activity },
   { title: "Campanhas", url: "/campaigns", icon: Send },
   { title: "Fluxos de Bot", url: "/bot-flows", icon: Bot },
   { title: "Relatórios", url: "/reports", icon: BarChart3 },
