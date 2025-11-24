@@ -68,10 +68,10 @@ async function handleNewMessage(supabase: any, instance: string, data: any) {
     return;
   }
 
-  // Encontrar chip pela instância (chipId)
+  // Encontrar chip pela instância (chipId) incluindo assigned_to
   const { data: chip, error: chipError } = await supabase
     .from('chips')
-    .select('id, company_id, queue_id')
+    .select('id, company_id, queue_id, assigned_to')
     .eq('id', instance)
     .single();
     
@@ -82,14 +82,25 @@ async function handleNewMessage(supabase: any, instance: string, data: any) {
 
   const phoneNumber = message.key.remoteJid.replace('@s.whatsapp.net', '');
   
+  // Roteamento inteligente: assigned_to tem prioridade sobre queue_id
+  const assignedTo = chip.assigned_to || null;
+  const queueId = chip.assigned_to ? null : chip.queue_id; // Se tem assigned_to, não usa fila
+  
+  console.log('🔀 Roteamento:', { 
+    assigned_to: assignedTo, 
+    queue_id: queueId,
+    strategy: assignedTo ? 'atendente_direto' : 'fila' 
+  });
+  
   // Criar ou buscar conversa
   const conversationId = await getOrCreateConversation(
     supabase, 
     chip.id,
     chip.company_id,
-    chip.queue_id,
+    queueId,
     phoneNumber,
-    message.pushName
+    message.pushName,
+    assignedTo
   );
   
   // Extrair conteúdo da mensagem
@@ -206,7 +217,8 @@ async function getOrCreateConversation(
   companyId: string,
   queueId: string | null,
   phoneNumber: string,
-  contactName: string | null
+  contactName: string | null,
+  assignedTo: string | null = null
 ) {
   // Buscar conversa aberta existente
   let { data: conversation } = await supabase
@@ -221,7 +233,7 @@ async function getOrCreateConversation(
     return conversation.id;
   }
 
-  // Criar nova conversa
+  // Criar nova conversa com atribuição inteligente
   const { data: newConv, error } = await supabase
     .from('conversations')
     .insert({
@@ -230,6 +242,7 @@ async function getOrCreateConversation(
       queue_id: queueId,
       phone_number: phoneNumber,
       contact_name: contactName,
+      assigned_to: assignedTo, // Atribui direto ao atendente se especificado
       status: 'open',
       last_message_at: new Date().toISOString()
     })

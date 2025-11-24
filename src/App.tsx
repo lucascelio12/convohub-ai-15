@@ -17,6 +17,7 @@ import Reports from "./pages/Reports";
 import AdvancedReports from "./pages/AdvancedReports";
 import Settings from "./pages/Settings";
 import BotFlows from "./pages/BotFlows";
+import ChipLogs from "./pages/ChipLogs";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -39,6 +40,7 @@ const App = () => (
                 <Route path="conversations" element={<Conversations />} />
                 <Route path="queues" element={<Queues />} />
                 <Route path="chips" element={<Chips />} />
+                <Route path="chip-logs" element={<ChipLogs />} />
                 <Route path="campaigns" element={<Campaigns />} />
                 <Route path="users" element={<Users />} />
                 <Route path="companies" element={<Companies />} />

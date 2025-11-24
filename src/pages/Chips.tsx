@@ -22,6 +22,7 @@ interface Chip {
   status: string;
   qr_code?: string;
   queue_id?: string;
+  assigned_to?: string;
   created_at: string;
   updated_at: string;
   created_by?: string;
@@ -29,6 +30,16 @@ interface Chip {
     name: string;
     color?: string;
   } | null;
+  assigned_user?: {
+    name: string;
+    email: string;
+  } | null;
+}
+
+interface User {
+  user_id: string;
+  name: string;
+  email: string;
 }
 
 interface Queue {
@@ -41,9 +52,10 @@ interface Queue {
 export default function Chips() {
   const [chips, setChips] = useState<Chip[]>([]);
   const [queues, setQueues] = useState<Queue[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [formData, setFormData] = useState({ name: '', phone_number: '', queue_id: '' });
+  const [formData, setFormData] = useState({ name: '', phone_number: '', queue_id: '', assigned_to: '' });
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [generatingQR, setGeneratingQR] = useState<string | null>(null);
@@ -59,6 +71,7 @@ export default function Chips() {
   useEffect(() => {
     fetchChips();
     fetchQueues();
+    fetchUsers();
     
     // Configurar Supabase Realtime para mudanças nos chips
     const channel = supabase
@@ -87,7 +100,11 @@ export default function Chips() {
       console.log('🔍 Buscando chips no Supabase...');
       const { data, error } = await supabase
         .from('chips')
-        .select('*, queues(name, color)')
+        .select(`
+          *, 
+          queues(name, color),
+          assigned_user:profiles!chips_assigned_to_fkey(name, email)
+        `)
         .order('created_at', { ascending: false });
 
       console.log('📊 Resultado da query chips:', { data, error });
@@ -120,6 +137,24 @@ export default function Chips() {
       toast({
         title: 'Erro',
         description: 'Erro ao carregar filas: ' + error.message,
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const fetchUsers = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('user_id, name, email')
+        .order('name');
+
+      if (error) throw error;
+      setUsers(data || []);
+    } catch (error: any) {
+      toast({
+        title: 'Erro',
+        description: 'Erro ao carregar usuários: ' + error.message,
         variant: 'destructive',
       });
     }
@@ -213,6 +248,7 @@ export default function Chips() {
           name: formData.name,
           phone_number: formData.phone_number,
           queue_id: formData.queue_id || null,
+          assigned_to: formData.assigned_to || null,
           status: 'inactive',
           created_by: user?.id
         });
@@ -225,7 +261,7 @@ export default function Chips() {
       });
 
       setIsDialogOpen(false);
-      setFormData({ name: '', phone_number: '', queue_id: '' });
+      setFormData({ name: '', phone_number: '', queue_id: '', assigned_to: '' });
       fetchChips();
     } catch (error: any) {
       toast({
@@ -252,7 +288,8 @@ export default function Chips() {
         .update({
           name: editingChip.name,
           phone_number: editingChip.phone_number,
-          queue_id: editingChip.queue_id || null
+          queue_id: editingChip.queue_id || null,
+          assigned_to: editingChip.assigned_to || null
         })
         .eq('id', editingChip.id);
 
@@ -335,8 +372,12 @@ export default function Chips() {
   };
 
   const filteredChips = chips.filter(chip => {
+    const assignedUserName = chip.assigned_user?.name || '';
+    const queueName = chip.queues?.name || '';
     const matchesSearch = chip.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         chip.phone_number.includes(searchTerm);
+                         chip.phone_number.includes(searchTerm) ||
+                         assignedUserName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         queueName.toLowerCase().includes(searchTerm.toLowerCase());
     if (statusFilter === 'all') return matchesSearch;
     return matchesSearch && chip.status === statusFilter;
   });
@@ -382,6 +423,25 @@ export default function Chips() {
                 />
               </div>
               <div className="space-y-2">
+                <Label>Atendente Direto (opcional)</Label>
+                <Select value={formData.assigned_to} onValueChange={(value) => setFormData(prev => ({...prev, assigned_to: value === 'none' ? '' : value}))}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione um atendente" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Nenhum atendente</SelectItem>
+                    {users.map((user) => (
+                      <SelectItem key={user.user_id} value={user.user_id}>
+                        {user.name} ({user.email})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Mensagens vão direto para o atendente selecionado
+                </p>
+              </div>
+              <div className="space-y-2">
                 <Label>Fila (opcional)</Label>
                 <Select value={formData.queue_id} onValueChange={(value) => setFormData(prev => ({...prev, queue_id: value === 'none' ? '' : value}))}>
                   <SelectTrigger>
@@ -402,6 +462,9 @@ export default function Chips() {
                     ))}
                   </SelectContent>
                 </Select>
+                <p className="text-xs text-muted-foreground">
+                  Usado apenas se nenhum atendente direto for selecionado
+                </p>
               </div>
               <div className="flex gap-2">
                 <Button variant="outline" onClick={() => setIsDialogOpen(false)} className="flex-1">Cancelar</Button>
@@ -457,7 +520,17 @@ export default function Chips() {
               <CardContent className="space-y-4">
                 <div>
                   <p className="text-sm text-muted-foreground">Telefone: {chip.phone_number}</p>
-                  {chip.queues && (
+                  
+                  {chip.assigned_user && (
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="text-xs text-muted-foreground">Atendente:</span>
+                      <Badge variant="default" className="text-xs">
+                        {chip.assigned_user.name}
+                      </Badge>
+                    </div>
+                  )}
+                  
+                  {chip.queues && !chip.assigned_user && (
                     <div className="flex items-center gap-2 mt-1">
                       <span className="text-xs text-muted-foreground">Fila:</span>
                       <Badge 
@@ -473,6 +546,7 @@ export default function Chips() {
                       </Badge>
                     </div>
                   )}
+                  
                   <p className="text-xs text-muted-foreground">Criado: {new Date(chip.created_at).toLocaleDateString('pt-BR')}</p>
                   <p className="text-xs text-muted-foreground">Status Real: {chipWithRealStatus.realStatus}</p>
                 </div>
@@ -651,6 +725,28 @@ export default function Chips() {
               />
             </div>
             <div className="space-y-2">
+              <Label>Atendente Direto (opcional)</Label>
+              <Select 
+                value={editingChip?.assigned_to || 'none'} 
+                onValueChange={(value) => setEditingChip(prev => prev ? {...prev, assigned_to: value === 'none' ? '' : value} : null)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione um atendente" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Nenhum atendente</SelectItem>
+                  {users.map((user) => (
+                    <SelectItem key={user.user_id} value={user.user_id}>
+                      {user.name} ({user.email})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Mensagens vão direto para o atendente selecionado
+              </p>
+            </div>
+            <div className="space-y-2">
               <Label>Fila (opcional)</Label>
               <Select 
                 value={editingChip?.queue_id || 'none'} 
@@ -674,6 +770,9 @@ export default function Chips() {
                   ))}
                 </SelectContent>
               </Select>
+              <p className="text-xs text-muted-foreground">
+                Usado apenas se nenhum atendente direto for selecionado
+              </p>
             </div>
             <div className="flex gap-2">
               <Button 
