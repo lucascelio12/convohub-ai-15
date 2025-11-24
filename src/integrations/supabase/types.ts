@@ -182,8 +182,47 @@ export type Database = {
           },
         ]
       }
+      chip_connection_logs: {
+        Row: {
+          chip_id: string
+          created_at: string
+          details: string | null
+          error_message: string | null
+          event_type: string
+          id: string
+          status: string
+        }
+        Insert: {
+          chip_id: string
+          created_at?: string
+          details?: string | null
+          error_message?: string | null
+          event_type: string
+          id?: string
+          status: string
+        }
+        Update: {
+          chip_id?: string
+          created_at?: string
+          details?: string | null
+          error_message?: string | null
+          event_type?: string
+          id?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chip_connection_logs_chip_id_fkey"
+            columns: ["chip_id"]
+            isOneToOne: false
+            referencedRelation: "chips"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       chips: {
         Row: {
+          assigned_to: string | null
           company_id: string | null
           created_at: string
           created_by: string
@@ -196,6 +235,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          assigned_to?: string | null
           company_id?: string | null
           created_at?: string
           created_by: string
@@ -208,6 +248,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          assigned_to?: string | null
           company_id?: string | null
           created_at?: string
           created_by?: string
@@ -220,6 +261,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "chips_assigned_to_fkey"
+            columns: ["assigned_to"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["user_id"]
+          },
           {
             foreignKeyName: "chips_company_id_fkey"
             columns: ["company_id"]
