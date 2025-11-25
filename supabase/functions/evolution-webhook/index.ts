@@ -225,20 +225,20 @@ async function getOrCreateConversation(
   contactName: string | null,
   assignedTo: string | null = null
 ) {
-  // Buscar conversa aberta existente
+  // Buscar conversa existente (qualquer status exceto completed)
   let { data: conversation } = await supabase
     .from('conversations')
     .select('id')
     .eq('chip_id', chipId)
     .eq('phone_number', phoneNumber)
-    .eq('status', 'open')
+    .neq('status', 'completed')
     .maybeSingle();
     
   if (conversation) {
     return conversation.id;
   }
 
-  // Criar nova conversa com atribuição inteligente
+  // Criar nova conversa com status 'waiting' (aguardando aceitação)
   const { data: newConv, error } = await supabase
     .from('conversations')
     .insert({
@@ -248,7 +248,7 @@ async function getOrCreateConversation(
       phone_number: phoneNumber,
       contact_name: contactName,
       assigned_to: assignedTo, // Atribui direto ao atendente se especificado
-      status: 'open',
+      status: 'waiting',
       last_message_at: new Date().toISOString()
     })
     .select('id')
