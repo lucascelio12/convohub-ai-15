@@ -62,11 +62,13 @@ async function handleNewMessage(supabase: any, instance: string, data: any) {
   const message = data.messages?.[0];
   if (!message) return;
 
-  // Ignora mensagens enviadas por nós
-  if (message.key.fromMe) {
-    console.log('⏭️ Mensagem enviada por nós, ignorando');
-    return;
-  }
+  // Ignora mensagens enviadas por nós (comentado temporariamente para testes)
+  // if (message.key.fromMe) {
+  //   console.log('⏭️ Mensagem enviada por nós, ignorando');
+  //   return;
+  // }
+  
+  console.log('📩 Processando mensagem. FromMe:', message.key.fromMe);
 
   // Encontrar chip pela instância (chipId) incluindo assigned_to
   const { data: chip, error: chipError } = await supabase
