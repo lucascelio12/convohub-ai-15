@@ -138,6 +138,26 @@ class WhatsAppService {
       return null;
     }
   }
+
+  async listInstances(): Promise<any> {
+    try {
+      const companyId = await this.getCompanyId();
+      
+      const { data, error } = await supabase.functions.invoke('evolution-manager', {
+        body: { action: 'list-instances', companyId }
+      });
+
+      if (error) throw error;
+
+      return {
+        success: true,
+        instances: data.instances
+      };
+    } catch (error: any) {
+      console.error("Error listing instances:", error);
+      return { success: false, error: error.message || "Failed to list instances" };
+    }
+  }
 }
 
 export const whatsappService = new WhatsAppService();

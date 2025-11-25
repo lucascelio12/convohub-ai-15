@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { QRCodeSVG } from 'qrcode.react';
-import { Plus, Smartphone, Wifi, WifiOff, Download, Trash2, RotateCcw, Settings, Eye, Edit, AlertTriangle } from 'lucide-react';
+import { Plus, Smartphone, Wifi, WifiOff, Download, Trash2, RotateCcw, Settings, Eye, Edit, AlertTriangle, RefreshCw } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
@@ -65,6 +65,9 @@ export default function Chips() {
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [chipToDelete, setChipToDelete] = useState<string | null>(null);
+  const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
+  const [availableInstances, setAvailableInstances] = useState<any[]>([]);
+  const [isLoadingInstances, setIsLoadingInstances] = useState(false);
   const { toast } = useToast();
   const { user } = useAuth();
 
@@ -340,6 +343,58 @@ export default function Chips() {
     }
   };
 
+  const handleImportClick = async () => {
+    setIsLoadingInstances(true);
+    setIsImportDialogOpen(true);
+    
+    try {
+      const result = await whatsappService.listInstances();
+      if (result.success && result.instances) {
+        setAvailableInstances(result.instances);
+      } else {
+        toast({ 
+          title: "Erro ao listar instâncias", 
+          description: result.error || "Verifique a configuração da Evolution API",
+          variant: "destructive" 
+        });
+      }
+    } catch (error) {
+      toast({ 
+        title: "Erro ao conectar com Evolution API", 
+        variant: "destructive" 
+      });
+    } finally {
+      setIsLoadingInstances(false);
+    }
+  };
+
+  const handleImportInstance = async (instance: any) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Usuário não autenticado');
+
+      const { error } = await supabase.from("chips").insert({
+        id: instance.instance.instanceName,
+        name: instance.instance.instanceName,
+        phone_number: instance.instance.owner || 'Número não disponível',
+        status: instance.instance.state === 'open' ? 'connected' : 'disconnected',
+        created_by: user.id,
+      });
+
+      if (error) throw error;
+
+      toast({ title: "Chip importado com sucesso!" });
+      setIsImportDialogOpen(false);
+      fetchChips();
+    } catch (error: any) {
+      toast({ 
+        title: "Erro ao importar chip", 
+        description: error.message,
+        variant: "destructive" 
+      });
+    }
+  };
+
   const getChipWithRealStatus = (chip: Chip) => {
     return {
       ...chip,
@@ -397,11 +452,16 @@ export default function Chips() {
           <h1 className="text-2xl font-bold">Chips WhatsApp</h1>
           <p className="text-sm text-muted-foreground">Gerencie seus chips e conexões WhatsApp</p>
         </div>
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-          <DialogTrigger asChild>
-            <Button><Plus className="h-4 w-4 mr-2" />Novo Chip</Button>
-          </DialogTrigger>
-          <DialogContent>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={handleImportClick}>
+            <Download className="h-4 w-4 mr-2" />
+            Importar da Evolution API
+          </Button>
+          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+            <DialogTrigger asChild>
+              <Button><Plus className="h-4 w-4 mr-2" />Novo Chip</Button>
+            </DialogTrigger>
+            <DialogContent>
             <DialogHeader>
               <DialogTitle>Criar Novo Chip</DialogTitle>
             </DialogHeader>
@@ -473,6 +533,7 @@ export default function Chips() {
             </div>
           </DialogContent>
         </Dialog>
+        </div>
       </div>
 
       <div className="flex gap-4 items-center">
@@ -827,6 +888,48 @@ export default function Chips() {
               </Button>
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isImportDialogOpen} onOpenChange={setIsImportDialogOpen}>
+        <DialogContent className="max-w-3xl max-h-[80vh] overflow-auto">
+          <DialogHeader>
+            <DialogTitle>Importar Chips da Evolution API</DialogTitle>
+          </DialogHeader>
+          
+          {isLoadingInstances ? (
+            <div className="flex items-center justify-center py-8">
+              <RefreshCw className="h-6 w-6 animate-spin" />
+              <span className="ml-2">Carregando instâncias...</span>
+            </div>
+          ) : availableInstances.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              Nenhuma instância encontrada na Evolution API
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {availableInstances.map((instance: any) => (
+                <Card key={instance.instance.instanceName} className="p-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1">
+                      <div className="font-medium">{instance.instance.instanceName}</div>
+                      <div className="text-sm text-muted-foreground">
+                        Status: {instance.instance.state === 'open' ? '🟢 Conectado' : '🔴 Desconectado'}
+                      </div>
+                      {instance.instance.owner && (
+                        <div className="text-sm text-muted-foreground">
+                          Número: {instance.instance.owner}
+                        </div>
+                      )}
+                    </div>
+                    <Button onClick={() => handleImportInstance(instance)}>
+                      Importar
+                    </Button>
+                  </div>
+                </Card>
+              ))}
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>
