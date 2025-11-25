@@ -349,7 +349,11 @@ export default function Chips() {
     
     try {
       const result = await whatsappService.listInstances();
+      console.log('📋 Instâncias recebidas:', result);
+      
       if (result.success && result.instances) {
+        // Verificar estrutura dos dados
+        console.log('📊 Estrutura das instâncias:', JSON.stringify(result.instances, null, 2));
         setAvailableInstances(result.instances);
       } else {
         toast({ 
@@ -357,12 +361,15 @@ export default function Chips() {
           description: result.error || "Verifique a configuração da Evolution API",
           variant: "destructive" 
         });
+        setAvailableInstances([]);
       }
     } catch (error) {
+      console.error('❌ Erro ao listar instâncias:', error);
       toast({ 
         title: "Erro ao conectar com Evolution API", 
         variant: "destructive" 
       });
+      setAvailableInstances([]);
     } finally {
       setIsLoadingInstances(false);
     }
@@ -370,14 +377,25 @@ export default function Chips() {
 
   const handleImportInstance = async (instance: any) => {
     try {
+      console.log('📦 Importando instância:', instance);
+      
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Usuário não autenticado');
 
+      // A Evolution API pode retornar diferentes estruturas
+      const instanceName = instance.instanceName || instance.instance?.instanceName || instance.name;
+      const owner = instance.owner || instance.instance?.owner || 'Número não disponível';
+      const state = instance.state || instance.instance?.state || 'disconnected';
+
+      if (!instanceName) {
+        throw new Error('Nome da instância não encontrado');
+      }
+
       const { error } = await supabase.from("chips").insert({
-        id: instance.instance.instanceName,
-        name: instance.instance.instanceName,
-        phone_number: instance.instance.owner || 'Número não disponível',
-        status: instance.instance.state === 'open' ? 'connected' : 'disconnected',
+        id: instanceName,
+        name: instanceName,
+        phone_number: owner,
+        status: state === 'open' ? 'connected' : 'disconnected',
         created_by: user.id,
       });
 
@@ -387,6 +405,7 @@ export default function Chips() {
       setIsImportDialogOpen(false);
       fetchChips();
     } catch (error: any) {
+      console.error('❌ Erro ao importar:', error);
       toast({ 
         title: "Erro ao importar chip", 
         description: error.message,
@@ -908,26 +927,33 @@ export default function Chips() {
             </div>
           ) : (
             <div className="space-y-3">
-              {availableInstances.map((instance: any) => (
-                <Card key={instance.instance.instanceName} className="p-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex-1">
-                      <div className="font-medium">{instance.instance.instanceName}</div>
-                      <div className="text-sm text-muted-foreground">
-                        Status: {instance.instance.state === 'open' ? '🟢 Conectado' : '🔴 Desconectado'}
-                      </div>
-                      {instance.instance.owner && (
+              {availableInstances.map((instance: any, index: number) => {
+                // Suportar diferentes estruturas de dados da Evolution API
+                const instanceName = instance.instanceName || instance.instance?.instanceName || instance.name || `instance-${index}`;
+                const state = instance.state || instance.instance?.state || 'unknown';
+                const owner = instance.owner || instance.instance?.owner;
+                
+                return (
+                  <Card key={instanceName} className="p-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1">
+                        <div className="font-medium">{instanceName}</div>
                         <div className="text-sm text-muted-foreground">
-                          Número: {instance.instance.owner}
+                          Status: {state === 'open' ? '🟢 Conectado' : '🔴 Desconectado'}
                         </div>
-                      )}
+                        {owner && (
+                          <div className="text-sm text-muted-foreground">
+                            Número: {owner}
+                          </div>
+                        )}
+                      </div>
+                      <Button onClick={() => handleImportInstance(instance)}>
+                        Importar
+                      </Button>
                     </div>
-                    <Button onClick={() => handleImportInstance(instance)}>
-                      Importar
-                    </Button>
-                  </div>
-                </Card>
-              ))}
+                  </Card>
+                );
+              })}
             </div>
           )}
         </DialogContent>
