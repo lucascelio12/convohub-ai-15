@@ -226,6 +226,7 @@ export type Database = {
           company_id: string | null
           created_at: string
           created_by: string
+          evolution_instance_id: string | null
           id: string
           name: string
           phone_number: string
@@ -239,6 +240,7 @@ export type Database = {
           company_id?: string | null
           created_at?: string
           created_by: string
+          evolution_instance_id?: string | null
           id?: string
           name: string
           phone_number: string
@@ -252,6 +254,7 @@ export type Database = {
           company_id?: string | null
           created_at?: string
           created_by?: string
+          evolution_instance_id?: string | null
           id?: string
           name?: string
           phone_number?: string

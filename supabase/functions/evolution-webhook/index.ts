@@ -72,7 +72,7 @@ async function handleNewMessage(supabase: any, instance: string, data: any) {
   const { data: chip, error: chipError } = await supabase
     .from('chips')
     .select('id, company_id, queue_id, assigned_to')
-    .eq('id', instance)
+    .or(`id.eq.${instance},evolution_instance_id.eq.${instance}`)
     .single();
     
   if (chipError || !chip) {
@@ -148,7 +148,7 @@ async function handleConnectionUpdate(supabase: any, instance: string, data: any
       status: mappedStatus,
       updated_at: new Date().toISOString()
     })
-    .eq('id', instance);
+    .or(`id.eq.${instance},evolution_instance_id.eq.${instance}`);
 
   if (error) {
     console.error('❌ Erro ao atualizar status do chip:', error);
@@ -167,7 +167,7 @@ async function handleQRUpdate(supabase: any, instance: string, data: any) {
       status: 'waiting_qr',
       updated_at: new Date().toISOString()
     })
-    .eq('id', instance);
+    .or(`id.eq.${instance},evolution_instance_id.eq.${instance}`);
 
   if (error) {
     console.error('❌ Erro ao atualizar QR:', error);
