@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Save, CheckCircle2, AlertCircle } from "lucide-react";
+import { Loader2, Save, CheckCircle2, AlertCircle, Copy } from "lucide-react";
 
 const formSchema = z.object({
   api_url: z.string().url("URL inválida. Ex: https://evolution.seudominio.com"),
@@ -242,6 +242,64 @@ export default function EvolutionApiSettings() {
           </form>
         </CardContent>
       </Card>
+
+      {configId && (
+        <Card className="mt-6">
+          <CardHeader>
+            <CardTitle>Configuração de Webhook</CardTitle>
+            <CardDescription>
+              Configure este webhook na sua Evolution API para receber mensagens automaticamente
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label>URL do Webhook</Label>
+              <div className="flex gap-2">
+                <Input
+                  readOnly
+                  value="https://uncjxmnfdidrkakpasjy.supabase.co/functions/v1/evolution-webhook"
+                  className="font-mono text-sm"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  onClick={() => {
+                    navigator.clipboard.writeText("https://uncjxmnfdidrkakpasjy.supabase.co/functions/v1/evolution-webhook");
+                    toast({
+                      title: "Copiado!",
+                      description: "URL do webhook copiada para a área de transferência",
+                    });
+                  }}
+                >
+                  <Copy className="h-4 w-4" />
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Cole esta URL nas configurações de webhook da sua Evolution API
+              </p>
+            </div>
+
+            <Alert>
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>
+                <div className="space-y-2 text-sm">
+                  <p className="font-medium">Como configurar:</p>
+                  <ol className="list-decimal list-inside space-y-1 ml-2">
+                    <li>Acesse as configurações da sua instância na Evolution API</li>
+                    <li>Adicione um webhook com a URL acima</li>
+                    <li>Ative os eventos: messages.upsert, connection.update, qrcode.updated</li>
+                    <li>Salve as configurações</li>
+                  </ol>
+                  <p className="mt-2">
+                    Após configurar, as mensagens do WhatsApp aparecerão automaticamente na tela de Conversas.
+                  </p>
+                </div>
+              </AlertDescription>
+            </Alert>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
