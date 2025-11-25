@@ -14,7 +14,7 @@ interface Conversation {
   id: string;
   phone_number: string;
   contact_name?: string;
-  status: 'new' | 'in_progress' | 'completed';
+  status: 'waiting' | 'open' | 'in_progress' | 'completed';
   conversation_type: 'individual' | 'group';
   tags: string[];
   last_message_at: string;
@@ -42,7 +42,7 @@ export default function Conversations() {
   const [loading, setLoading] = useState(true);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
-  const [activeTab, setActiveTab] = useState('new');
+  const [activeTab, setActiveTab] = useState('waiting');
   const [newMessage, setNewMessage] = useState('');
   const { toast } = useToast();
 
@@ -136,6 +136,35 @@ export default function Conversations() {
     fetchMessages(conversation.id);
   };
 
+  const acceptConversation = async (conversationId: string) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      const { error } = await supabase
+        .from('conversations')
+        .update({ 
+          status: 'in_progress',
+          assigned_to: user?.id 
+        })
+        .eq('id', conversationId);
+
+      if (error) throw error;
+      
+      fetchConversations();
+      toast({
+        title: 'Sucesso',
+        description: 'Conversa aceita com sucesso!',
+        variant: 'default',
+      });
+    } catch (error: any) {
+      toast({
+        title: 'Erro',
+        description: 'Erro ao aceitar conversa: ' + error.message,
+        variant: 'destructive',
+      });
+    }
+  };
+
   const finishConversation = async (conversationId: string) => {
     try {
       const { error } = await supabase
@@ -166,8 +195,8 @@ export default function Conversations() {
     
     let matchesTab = false;
     switch (activeTab) {
-      case 'new':
-        matchesTab = conv.status === 'new' && conv.conversation_type === 'individual';
+      case 'waiting':
+        matchesTab = conv.status === 'waiting' && conv.conversation_type === 'individual';
         break;
       case 'in_progress':
         matchesTab = conv.status === 'in_progress' && conv.conversation_type === 'individual';
@@ -187,7 +216,8 @@ export default function Conversations() {
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'new': return 'bg-blue-100 text-blue-800 border-blue-200';
+      case 'waiting': return 'bg-orange-100 text-orange-800 border-orange-200';
+      case 'open': return 'bg-blue-100 text-blue-800 border-blue-200';
       case 'in_progress': return 'bg-yellow-100 text-yellow-800 border-yellow-200';
       case 'completed': return 'bg-green-100 text-green-800 border-green-200';
       default: return 'bg-gray-100 text-gray-800 border-gray-200';
@@ -196,7 +226,8 @@ export default function Conversations() {
 
   const getStatusLabel = (status: string) => {
     switch (status) {
-      case 'new': return 'Novo';
+      case 'waiting': return 'Aguardando';
+      case 'open': return 'Aberto';
       case 'in_progress': return 'Em Andamento';
       case 'completed': return 'Finalizado';
       default: return status;
@@ -242,7 +273,7 @@ export default function Conversations() {
             
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
               <TabsList className="grid w-full grid-cols-4">
-                <TabsTrigger value="new" className="text-xs">Novas</TabsTrigger>
+                <TabsTrigger value="waiting" className="text-xs">Aguardando</TabsTrigger>
                 <TabsTrigger value="in_progress" className="text-xs">Em Andamento</TabsTrigger>
                 <TabsTrigger value="groups" className="text-xs">Grupos</TabsTrigger>
                 <TabsTrigger value="completed" className="text-xs">Finalizadas</TabsTrigger>
@@ -343,7 +374,15 @@ export default function Conversations() {
                   </div>
                 </div>
                 <div className="flex gap-2">
-                  {selectedConversation.status !== 'completed' && (
+                  {selectedConversation.status === 'waiting' && (
+                    <Button 
+                      size="sm"
+                      onClick={() => acceptConversation(selectedConversation.id)}
+                    >
+                      Aceitar Conversa
+                    </Button>
+                  )}
+                  {selectedConversation.status !== 'completed' && selectedConversation.status !== 'waiting' && (
                     <Button 
                       variant="outline" 
                       size="sm"
