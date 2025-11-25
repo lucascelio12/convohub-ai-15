@@ -28,16 +28,25 @@ class WhatsAppService {
     try {
       const companyId = await this.getCompanyId();
       
+      // Buscar o chip para obter o evolution_instance_id
+      const { data: chip } = await supabase
+        .from('chips')
+        .select('evolution_instance_id')
+        .eq('id', chipId)
+        .single();
+      
+      const instanceId = chip?.evolution_instance_id || chipId;
+      
       // Criar instância na Evolution API
       const { data: createData, error: createError } = await supabase.functions.invoke('evolution-manager', {
-        body: { action: 'create-instance', chipId, companyId }
+        body: { action: 'create-instance', chipId: instanceId, companyId }
       });
 
       if (createError) throw createError;
       
       // Conectar instância
       const { data: connectData, error: connectError } = await supabase.functions.invoke('evolution-manager', {
-        body: { action: 'connect', chipId, companyId }
+        body: { action: 'connect', chipId: instanceId, companyId }
       });
 
       if (connectError) throw connectError;
@@ -57,8 +66,17 @@ class WhatsAppService {
     try {
       const companyId = await this.getCompanyId();
       
+      // Buscar o chip para obter o evolution_instance_id
+      const { data: chip } = await supabase
+        .from('chips')
+        .select('evolution_instance_id')
+        .eq('id', chipId)
+        .single();
+      
+      const instanceId = chip?.evolution_instance_id || chipId;
+      
       const { data, error } = await supabase.functions.invoke('evolution-manager', {
-        body: { action: 'get-status', chipId, companyId }
+        body: { action: 'get-status', chipId: instanceId, companyId }
       });
 
       if (error) throw error;
@@ -77,8 +95,17 @@ class WhatsAppService {
     try {
       const companyId = await this.getCompanyId();
       
+      // Buscar o chip para obter o evolution_instance_id
+      const { data: chip } = await supabase
+        .from('chips')
+        .select('evolution_instance_id')
+        .eq('id', chipId)
+        .single();
+      
+      const instanceId = chip?.evolution_instance_id || chipId;
+      
       const { data, error } = await supabase.functions.invoke('evolution-manager', {
-        body: { action: 'disconnect', chipId, companyId }
+        body: { action: 'disconnect', chipId: instanceId, companyId }
       });
 
       if (error) throw error;
@@ -99,10 +126,19 @@ class WhatsAppService {
     try {
       const companyId = await this.getCompanyId();
       
+      // Buscar o chip para obter o evolution_instance_id
+      const { data: chip } = await supabase
+        .from('chips')
+        .select('evolution_instance_id')
+        .eq('id', chipId)
+        .single();
+      
+      const instanceId = chip?.evolution_instance_id || chipId;
+      
       const { data, error } = await supabase.functions.invoke('evolution-manager', {
         body: { 
           action: 'send-message', 
-          chipId, 
+          chipId: instanceId, 
           phoneNumber: phone, 
           message,
           companyId 

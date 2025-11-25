@@ -23,6 +23,7 @@ interface Chip {
   qr_code?: string;
   queue_id?: string;
   assigned_to?: string;
+  evolution_instance_id?: string; // Nome da instância na Evolution API
   created_at: string;
   updated_at: string;
   created_by?: string;
@@ -391,10 +392,12 @@ export default function Chips() {
         throw new Error('Nome da instância não encontrado');
       }
 
+      // Não especificar id - deixar o banco gerar UUID automaticamente
+      // Armazenar o nome da instância da Evolution API no campo evolution_instance_id
       const { error } = await supabase.from("chips").insert({
-        id: instanceName,
         name: instanceName,
         phone_number: owner,
+        evolution_instance_id: instanceName, // Nome real da instância na Evolution API
         status: state === 'open' ? 'connected' : 'disconnected',
         created_by: user.id,
       });
