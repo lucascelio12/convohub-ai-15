@@ -82,7 +82,10 @@ async function handleNewMessage(supabase: any, instance: string, data: any) {
     return;
   }
 
-  const phoneNumber = message.key.remoteJid.replace('@s.whatsapp.net', '');
+  const phoneNumber = message.key.remoteJid
+    .replace('@s.whatsapp.net', '')
+    .replace('@lid', '')
+    .split(':')[0]; // Remove formato lid com : se houver
   
   // Roteamento inteligente: assigned_to tem prioridade sobre queue_id
   const assignedTo = chip.assigned_to || null;
