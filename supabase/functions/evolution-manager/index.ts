@@ -57,6 +57,8 @@ serve(async (req) => {
         return await getStatus(apiUrl, apiKey, chipId);
       case 'delete-instance':
         return await deleteInstance(apiUrl, apiKey, chipId);
+      case 'list-instances':
+        return await listInstances(apiUrl, apiKey);
       default:
         throw new Error('Ação inválida');
     }
@@ -219,6 +221,31 @@ async function deleteInstance(apiUrl: string, apiKey: string, chipId: string) {
   }
   
   return new Response(JSON.stringify({ success: true }), {
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  });
+}
+
+async function listInstances(apiUrl: string, apiKey: string) {
+  console.log('📋 Listando instâncias');
+  
+  const response = await fetch(`${apiUrl}/instance/fetchInstances`, {
+    method: 'GET',
+    headers: { 'apikey': apiKey }
+  });
+  
+  if (!response.ok) {
+    const error = await response.text();
+    console.error('❌ Erro ao listar instâncias:', error);
+    throw new Error(`Erro ao listar instâncias: ${error}`);
+  }
+  
+  const data = await response.json();
+  console.log('✅ Instâncias listadas:', data);
+  
+  return new Response(JSON.stringify({
+    success: true,
+    instances: data
+  }), {
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
   });
 }
