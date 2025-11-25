@@ -383,6 +383,17 @@ export default function Chips() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Usuário não autenticado');
 
+      // Buscar company_id do usuário
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('company_id')
+        .eq('user_id', user.id)
+        .single();
+
+      if (!profile?.company_id) {
+        throw new Error('Empresa não encontrada para o usuário');
+      }
+
       // A Evolution API pode retornar diferentes estruturas
       const instanceName = instance.instanceName || instance.instance?.instanceName || instance.name;
       const owner = instance.owner || instance.instance?.owner || 'Número não disponível';
@@ -400,6 +411,7 @@ export default function Chips() {
         evolution_instance_id: instanceName, // Nome real da instância na Evolution API
         status: state === 'open' ? 'connected' : 'disconnected',
         created_by: user.id,
+        company_id: profile.company_id,
       });
 
       if (error) throw error;
